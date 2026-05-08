@@ -7,6 +7,7 @@ import { ScheduleEditor } from '@/components/ScheduleEditor';
 import { PreviewPanel } from '@/components/PreviewPanel';
 import { HistoryPanel } from '@/components/HistoryPanel';
 import { TemplatesPanel } from '@/components/TemplatesPanel';
+import { WorkersPanel } from '@/components/WorkersPanel';
 import { useScheduleStore } from '@/store/scheduleStore';
 
 const App: React.FC = () => {
@@ -24,6 +25,7 @@ const App: React.FC = () => {
     newSchedule,
     loadSchedules,
     loadTemplates,
+    loadWorkerOptions,
   } = useScheduleStore();
 
   const [copied, setCopied] = useState(false);
@@ -31,7 +33,8 @@ const App: React.FC = () => {
   useEffect(() => {
     loadSchedules();
     loadTemplates();
-  }, [loadSchedules, loadTemplates]);
+    loadWorkerOptions();
+  }, [loadSchedules, loadTemplates, loadWorkerOptions]);
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -120,6 +123,7 @@ const App: React.FC = () => {
               <TabsTrigger value="preview">Предпросмотр</TabsTrigger>
               <TabsTrigger value="history">История</TabsTrigger>
               <TabsTrigger value="templates">Шаблоны</TabsTrigger>
+              <TabsTrigger value="workers">Работники</TabsTrigger>
             </TabsList>
 
             <TabsContent value="editor">
@@ -136,6 +140,10 @@ const App: React.FC = () => {
 
             <TabsContent value="templates">
               <TemplatesPanel />
+            </TabsContent>
+
+            <TabsContent value="workers">
+              <WorkersPanel />
             </TabsContent>
           </Tabs>
         </main>

@@ -6,6 +6,8 @@ import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
+import { WorkerSelect } from './WorkerSelect';
+import { WorkerMultiSelect } from './WorkerMultiSelect';
 import type { ScheduleBlock } from '@/types/schedule';
 import { useScheduleStore } from '@/store/scheduleStore';
 
@@ -52,11 +54,10 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
             <div className="flex gap-3">
               <div className="flex-1">
                 <Label className="text-xs text-muted-foreground">Работник</Label>
-                <Input
+                <WorkerSelect
                   value={block.assemblyWorker}
-                  onChange={e => updateBlock(block.id, { assemblyWorker: e.target.value })}
-                  placeholder="СЛ"
-                  className="h-8 text-sm"
+                  onChange={v => updateBlock(block.id, { assemblyWorker: v })}
+                  placeholder="—"
                 />
               </div>
               <div className="w-28">
@@ -138,11 +139,10 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Работник</Label>
-                <Input
+                <WorkerSelect
                   value={block.kneadWorker}
-                  onChange={e => updateBlock(block.id, { kneadWorker: e.target.value })}
-                  placeholder="Ди"
-                  className="h-8 text-sm"
+                  onChange={v => updateBlock(block.id, { kneadWorker: v })}
+                  placeholder="—"
                 />
               </div>
             </div>
@@ -166,26 +166,28 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
               />
             </div>
             <div className="space-y-1">
-              {block.cuttingWorkers.map(worker => (
-                <div key={worker.id} className="flex items-center gap-2">
-                  <span className="text-xs text-muted-foreground w-5 text-right">{worker.position}</span>
-                  <Input
-                    value={worker.name}
-                    onChange={e => updateWorker(block.id, worker.id, { name: e.target.value })}
-                    placeholder="Имя"
-                    className="h-7 text-sm flex-1"
-                    onKeyDown={e => {
-                      if (e.key === 'Enter') {
-                        e.preventDefault();
-                        addWorker(block.id);
-                      }
-                    }}
-                  />
-                  <Button variant="ghost" size="icon" onClick={() => removeWorker(block.id, worker.id)} className="h-6 w-6">
-                    <X className="h-3 w-3" />
-                  </Button>
-                </div>
-              ))}
+              {block.cuttingWorkers.map(worker => {
+                const others = block.cuttingWorkers
+                  .filter(w => w.id !== worker.id)
+                  .map(w => w.name)
+                  .filter(Boolean);
+                return (
+                  <div key={worker.id} className="flex items-center gap-2">
+                    <span className="text-xs text-muted-foreground w-5 text-right">{worker.position}</span>
+                    <div className="flex-1">
+                      <WorkerSelect
+                        value={worker.name}
+                        onChange={v => updateWorker(block.id, worker.id, { name: v })}
+                        placeholder="— Выбрать —"
+                        exclude={others}
+                      />
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => removeWorker(block.id, worker.id)} className="h-6 w-6">
+                      <X className="h-3 w-3" />
+                    </Button>
+                  </div>
+                );
+              })}
             </div>
           </div>
 
@@ -204,11 +206,10 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
               </div>
               <div>
                 <Label className="text-xs text-muted-foreground">Работники</Label>
-                <Input
-                  value={block.bakingWorkers}
-                  onChange={e => updateBlock(block.id, { bakingWorkers: e.target.value })}
-                  placeholder="Ф.ПГ"
-                  className="h-8 text-sm"
+                <WorkerMultiSelect
+                  values={block.bakingWorkers}
+                  onChange={v => updateBlock(block.id, { bakingWorkers: v })}
+                  placeholder="Никого не выбрано"
                 />
               </div>
             </div>

@@ -1,4 +1,4 @@
-import type { Schedule, Template } from '@/types/schedule';
+import type { Schedule, Template, WorkerOption } from '@/types/schedule';
 
 const API_BASE = '/api';
 
@@ -36,4 +36,13 @@ export const api = {
 
   // Generate text
   generateText: (id: string) => request<{ text: string }>(`/schedules/${id}/generate`),
+
+  // Workers
+  getWorkers: () => request<WorkerOption[]>('/workers'),
+  createWorker: (data: { name: string; shortName: string; position?: string | null }) =>
+    request<WorkerOption>('/workers', { method: 'POST', body: JSON.stringify(data) }),
+  updateWorker: (id: string, data: Partial<{ name: string; shortName: string; position: string | null }>) =>
+    request<WorkerOption>(`/workers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
+  deleteWorker: (id: string) =>
+    request<void>(`/workers/${id}`, { method: 'DELETE' }),
 };

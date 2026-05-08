@@ -67,8 +67,8 @@ function generateBlockText(block: ScheduleBlock): string {
   }
 
   // Baking workers
-  if (block.bakingWorkers) {
-    lines.push(block.bakingWorkers);
+  if (block.bakingWorkers && block.bakingWorkers.length > 0) {
+    lines.push(block.bakingWorkers.join('.'));
   }
 
   // Extra sections

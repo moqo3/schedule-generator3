@@ -4,6 +4,14 @@ export interface Worker {
   name: string;
 }
 
+export interface WorkerOption {
+  id: string;
+  name: string;
+  shortName: string;
+  position: string | null;
+  createdAt: string;
+}
+
 export interface ScheduleBlock {
   id: string;
   order: number;
@@ -15,11 +23,24 @@ export interface ScheduleBlock {
   cuttingStartTime: string;
   cuttingWorkers: Worker[];
   bakingTime: string;
-  bakingWorkers: string;
+  bakingWorkers: string[];
   assemblyWorker: string;
   assemblyTime: string;
   isAssemblyBlock: boolean;
   extraSections: string;
+}
+
+export function normalizeBakingWorkers(value: unknown): string[] {
+  if (Array.isArray(value)) return value.filter((v): v is string => typeof v === 'string');
+  if (typeof value === 'string' && value.length > 0) return [value];
+  return [];
+}
+
+export function normalizeBlock(block: ScheduleBlock): ScheduleBlock {
+  return {
+    ...block,
+    bakingWorkers: normalizeBakingWorkers(block.bakingWorkers),
+  };
 }
 
 export interface Schedule {
@@ -61,7 +82,7 @@ export function createEmptyBlock(order: number): ScheduleBlock {
     cuttingStartTime: '',
     cuttingWorkers: [],
     bakingTime: '',
-    bakingWorkers: '',
+    bakingWorkers: [],
     assemblyWorker: '',
     assemblyTime: '',
     isAssemblyBlock: false,

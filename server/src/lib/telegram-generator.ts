@@ -15,7 +15,7 @@ interface ScheduleBlock {
   cuttingStartTime: string;
   cuttingWorkers: Worker[];
   bakingTime: string;
-  bakingWorkers: string;
+  bakingWorkers: string | string[];
   assemblyWorker: string;
   assemblyTime: string;
   isAssemblyBlock: boolean;
@@ -88,7 +88,13 @@ function generateBlockText(block: ScheduleBlock): string {
   }
 
   if (block.bakingWorkers) {
-    lines.push(block.bakingWorkers);
+    if (Array.isArray(block.bakingWorkers)) {
+      if (block.bakingWorkers.length > 0) {
+        lines.push(block.bakingWorkers.join('.'));
+      }
+    } else {
+      lines.push(block.bakingWorkers);
+    }
   }
 
   if (block.extraSections && block.extraSections.trim()) {

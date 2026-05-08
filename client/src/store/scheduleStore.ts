@@ -1,20 +1,23 @@
 import { create } from 'zustand';
-import type { Schedule, ScheduleBlock, Worker, Template } from '@/types/schedule';
-import { createEmptyBlock, createEmptySchedule } from '@/types/schedule';
+import type { Schedule, ScheduleBlock, Worker, Template, WorkerOption } from '@/types/schedule';
+import { createEmptyBlock, createEmptySchedule, normalizeBlock } from '@/types/schedule';
 import { api } from '@/lib/api';
 import { generateTelegramText } from '@/lib/telegram-generator';
+
+export type ActiveTab = 'editor' | 'preview' | 'history' | 'templates' | 'workers';
 
 interface ScheduleState {
   schedule: Schedule;
   schedules: Schedule[];
   templates: Template[];
+  workerOptions: WorkerOption[];
   generatedText: string;
   isSaving: boolean;
   lastSaved: string | null;
-  activeTab: 'editor' | 'preview' | 'history' | 'templates';
+  activeTab: ActiveTab;
 
   setSchedule: (schedule: Schedule) => void;
-  setActiveTab: (tab: 'editor' | 'preview' | 'history' | 'templates') => void;
+  setActiveTab: (tab: ActiveTab) => void;
   updateDate: (date: string) => void;
   updateDayOfWeek: (day: string) => void;
 
@@ -43,6 +46,11 @@ interface ScheduleState {
   loadTemplate: (template: Template) => void;
   deleteTemplate: (id: string) => Promise<void>;
 
+  loadWorkerOptions: () => Promise<void>;
+  createWorkerOption: (data: { name: string; shortName: string; position?: string | null }) => Promise<void>;
+  updateWorkerOption: (id: string, data: Partial<{ name: string; shortName: string; position: string | null }>) => Promise<void>;
+  deleteWorkerOption: (id: string) => Promise<void>;
+
   triggerAutosave: () => void;
 }
 
@@ -52,6 +60,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   schedule: createEmptySchedule(),
   schedules: [],
   templates: [],
+  workerOptions: [],
   generatedText: '',
   isSaving: false,
   lastSaved: null,
@@ -240,7 +249,11 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   loadSchedule: async (id) => {
     try {
       const schedule = await api.getSchedule(id);
-      set({ schedule, activeTab: 'editor' });
+      const normalized: Schedule = {
+        ...schedule,
+        blocks: (schedule.blocks ?? []).map(normalizeBlock),
+      };
+      set({ schedule: normalized, activeTab: 'editor' });
     } catch (e) {
       console.error('Failed to load schedule', e);
     }
@@ -280,7 +293,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
 
   loadTemplate: (template) => {
     const { schedule } = get();
-    const blocks = template.blocks.map(b => ({ ...b, id: crypto.randomUUID() }));
+    const blocks = template.blocks.map(b => normalizeBlock({ ...b, id: crypto.randomUUID() }));
     set({
       schedule: { ...schedule, blocks, updatedAt: new Date().toISOString() },
       activeTab: 'editor',
@@ -293,6 +306,42 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       get().loadTemplates();
     } catch (e) {
       console.error('Failed to delete template', e);
+    }
+  },
+
+  loadWorkerOptions: async () => {
+    try {
+      const workerOptions = await api.getWorkers();
+      set({ workerOptions });
+    } catch (e) {
+      console.error('Failed to load workers', e);
+    }
+  },
+
+  createWorkerOption: async (data) => {
+    try {
+      await api.createWorker(data);
+      await get().loadWorkerOptions();
+    } catch (e) {
+      console.error('Failed to create worker', e);
+    }
+  },
+
+  updateWorkerOption: async (id, data) => {
+    try {
+      await api.updateWorker(id, data);
+      await get().loadWorkerOptions();
+    } catch (e) {
+      console.error('Failed to update worker', e);
+    }
+  },
+
+  deleteWorkerOption: async (id) => {
+    try {
+      await api.deleteWorker(id);
+      await get().loadWorkerOptions();
+    } catch (e) {
+      console.error('Failed to delete worker', e);
     }
   },
 
