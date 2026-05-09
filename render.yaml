@@ -1,0 +1,18 @@
+# Render Blueprint — https://render.com/docs/blueprint-spec
+# Creates a single Web Service that serves the API and the built client.
+# DATABASE_URL is provided by an external Postgres (e.g. Neon free tier).
+# Set it in the Render dashboard or during the Blueprint apply step.
+
+services:
+  - type: web
+    name: schedule-generator2
+    runtime: docker
+    plan: free
+    region: frankfurt
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /api/health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: DATABASE_URL
+        sync: false
