@@ -30,6 +30,8 @@ interface ScheduleState {
   addWorker: (blockId: string) => void;
   removeWorker: (blockId: string, workerId: string) => void;
   updateWorker: (blockId: string, workerId: string, updates: Partial<Worker>) => void;
+  setCuttingWorkersCount: (blockId: string, count: number) => void;
+  moveWorker: (blockId: string, workerId: string, direction: -1 | 1) => void;
 
   generateText: () => void;
   copyText: () => Promise<boolean>;
@@ -176,6 +178,46 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         w.id === workerId ? { ...w, ...updates } : w
       );
       return { ...b, cuttingWorkers: workers };
+    });
+    set({ schedule: { ...schedule, blocks, updatedAt: new Date().toISOString() } });
+    get().triggerAutosave();
+  },
+
+  setCuttingWorkersCount: (blockId, count) => {
+    const { schedule } = get();
+    const safeCount = Math.max(0, Math.min(50, Math.floor(count)));
+    const blocks = schedule.blocks.map(b => {
+      if (b.id !== blockId) return b;
+      const current = b.cuttingWorkers;
+      let next: Worker[];
+      if (safeCount === current.length) {
+        next = current;
+      } else if (safeCount < current.length) {
+        next = current.slice(0, safeCount).map((w, i) => ({ ...w, position: i + 1 }));
+      } else {
+        const extras: Worker[] = [];
+        for (let i = current.length; i < safeCount; i++) {
+          extras.push({ id: crypto.randomUUID(), position: i + 1, name: '' });
+        }
+        next = [...current, ...extras];
+      }
+      return { ...b, cuttingWorkers: next };
+    });
+    set({ schedule: { ...schedule, blocks, updatedAt: new Date().toISOString() } });
+    get().triggerAutosave();
+  },
+
+  moveWorker: (blockId, workerId, direction) => {
+    const { schedule } = get();
+    const blocks = schedule.blocks.map(b => {
+      if (b.id !== blockId) return b;
+      const idx = b.cuttingWorkers.findIndex(w => w.id === workerId);
+      const target = idx + direction;
+      if (idx < 0 || target < 0 || target >= b.cuttingWorkers.length) return b;
+      const next = [...b.cuttingWorkers];
+      [next[idx], next[target]] = [next[target], next[idx]];
+      const reindexed = next.map((w, i) => ({ ...w, position: i + 1 }));
+      return { ...b, cuttingWorkers: reindexed };
     });
     set({ schedule: { ...schedule, blocks, updatedAt: new Date().toISOString() } });
     get().triggerAutosave();
