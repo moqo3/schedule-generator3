@@ -1,7 +1,7 @@
 import React from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Plus, X } from 'lucide-react';
+import { GripVertical, Trash2, Minus, Plus, ChevronUp, ChevronDown } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,13 @@ interface Props {
 }
 
 export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
-  const { updateBlock, removeBlock, addWorker, removeWorker, updateWorker } = useScheduleStore();
+  const {
+    updateBlock,
+    removeBlock,
+    updateWorker,
+    setCuttingWorkersCount,
+    moveWorker,
+  } = useScheduleStore();
 
   const {
     attributes,
@@ -175,57 +181,112 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
 
           {/* Cutting Section */}
           <div className="rounded-md border p-3 bg-green-50/50">
-            <div className="flex items-center justify-between mb-2 gap-2">
-              <Label className="text-xs font-semibold text-green-700">Разделка</Label>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => addWorker(block.id)}
-                className="h-9 px-2 text-xs text-green-700 hover:bg-green-100"
-              >
-                <Plus className="h-3.5 w-3.5 mr-1" /> Работник
-              </Button>
+            <Label className="text-xs font-semibold text-green-700 mb-2 block">Разделка</Label>
+            <div className="grid grid-cols-2 gap-2 mb-3">
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Начало</Label>
+                <Input
+                  value={block.cuttingStartTime}
+                  onChange={e => updateBlock(block.id, { cuttingStartTime: e.target.value })}
+                  placeholder="8.00"
+                  className="h-10 text-base sm:text-sm"
+                  inputMode="decimal"
+                />
+              </div>
+              <div className="space-y-1">
+                <Label className="text-xs text-muted-foreground">Кол-во работников</Label>
+                <div className="flex items-center gap-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setCuttingWorkersCount(block.id, block.cuttingWorkers.length - 1)}
+                    disabled={block.cuttingWorkers.length === 0}
+                    className="h-10 w-10 shrink-0"
+                    aria-label="Уменьшить количество"
+                  >
+                    <Minus className="h-4 w-4" />
+                  </Button>
+                  <Input
+                    type="number"
+                    min={0}
+                    max={50}
+                    value={block.cuttingWorkers.length}
+                    onChange={e => {
+                      const n = parseInt(e.target.value, 10);
+                      setCuttingWorkersCount(block.id, Number.isFinite(n) ? n : 0);
+                    }}
+                    className="h-10 text-base sm:text-sm text-center flex-1 min-w-0"
+                    inputMode="numeric"
+                  />
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="icon"
+                    onClick={() => setCuttingWorkersCount(block.id, block.cuttingWorkers.length + 1)}
+                    className="h-10 w-10 shrink-0"
+                    aria-label="Добавить работника"
+                  >
+                    <Plus className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
             </div>
-            <div className="mb-3 space-y-1">
-              <Label className="text-xs text-muted-foreground">Начало</Label>
-              <Input
-                value={block.cuttingStartTime}
-                onChange={e => updateBlock(block.id, { cuttingStartTime: e.target.value })}
-                placeholder="8.00"
-                className="h-10 text-base sm:text-sm w-full sm:w-32"
-                inputMode="decimal"
-              />
-            </div>
-            <div className="space-y-2">
-              {block.cuttingWorkers.map(worker => {
-                const others = block.cuttingWorkers
-                  .filter(w => w.id !== worker.id)
-                  .map(w => w.name)
-                  .filter(Boolean);
-                return (
-                  <div key={worker.id} className="flex items-center gap-2">
-                    <span className="text-xs text-muted-foreground w-6 text-right shrink-0">{worker.position}</span>
-                    <div className="flex-1 min-w-0">
-                      <WorkerSelect
-                        value={worker.name}
-                        onChange={v => updateWorker(block.id, worker.id, { name: v })}
-                        placeholder="— Выбрать —"
-                        exclude={others}
-                      />
+            {block.cuttingWorkers.length === 0 ? (
+              <p className="text-xs text-muted-foreground italic">
+                Укажите количество работников выше — появятся ячейки для выбора.
+              </p>
+            ) : (
+              <div className="space-y-2">
+                {block.cuttingWorkers.map((worker, i) => {
+                  const others = block.cuttingWorkers
+                    .filter(w => w.id !== worker.id)
+                    .map(w => w.name)
+                    .filter(Boolean);
+                  const isFirst = i === 0;
+                  const isLast = i === block.cuttingWorkers.length - 1;
+                  return (
+                    <div key={worker.id} className="flex items-center gap-1.5">
+                      <span className="text-xs text-muted-foreground w-6 text-right shrink-0 tabular-nums">
+                        {worker.position}.
+                      </span>
+                      <div className="flex-1 min-w-0">
+                        <WorkerSelect
+                          value={worker.name}
+                          onChange={v => updateWorker(block.id, worker.id, { name: v })}
+                          placeholder="— Выбрать —"
+                          exclude={others}
+                        />
+                      </div>
+                      <div className="flex flex-col shrink-0">
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => moveWorker(block.id, worker.id, -1)}
+                          disabled={isFirst}
+                          className="h-5 w-8 disabled:opacity-30"
+                          aria-label="Вверх"
+                        >
+                          <ChevronUp className="h-4 w-4" />
+                        </Button>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => moveWorker(block.id, worker.id, 1)}
+                          disabled={isLast}
+                          className="h-5 w-8 disabled:opacity-30"
+                          aria-label="Вниз"
+                        >
+                          <ChevronDown className="h-4 w-4" />
+                        </Button>
+                      </div>
                     </div>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      onClick={() => removeWorker(block.id, worker.id)}
-                      className="h-10 w-10 shrink-0"
-                      aria-label="Убрать работника"
-                    >
-                      <X className="h-4 w-4" />
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
+                  );
+                })}
+              </div>
+            )}
           </div>
 
           {/* Baking Section */}
