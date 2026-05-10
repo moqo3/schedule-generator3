@@ -75,7 +75,7 @@ export function createEmptyBlock(order: number): ScheduleBlock {
     id: crypto.randomUUID(),
     order,
     title: `${order} разделка`,
-    workType: '',
+    workType: 'Мелкие',
     kneadTime: '',
     kneadCount: '',
     kneadWorker: '',

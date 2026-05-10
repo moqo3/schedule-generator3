@@ -8,6 +8,8 @@ import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { WorkerSelect } from './WorkerSelect';
 import { WorkerMultiSelect } from './WorkerMultiSelect';
+import { TimePicker } from './TimePicker';
+import { WorkTypeSelect } from './WorkTypeSelect';
 import type { ScheduleBlock } from '@/types/schedule';
 import { useScheduleStore } from '@/store/scheduleStore';
 
@@ -79,12 +81,11 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
               </div>
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Время</Label>
-                <Input
+                <TimePicker
                   value={block.assemblyTime}
-                  onChange={e => updateBlock(block.id, { assemblyTime: e.target.value })}
-                  placeholder="14.30"
-                  className="h-10 text-base sm:text-sm"
-                  inputMode="decimal"
+                  onChange={v => updateBlock(block.id, { assemblyTime: v })}
+                  defaultTime="14:30"
+                  ariaLabel="Время сборки"
                 />
               </div>
             </div>
@@ -135,11 +136,9 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
             </div>
             <div className="space-y-1">
               <Label className="text-xs text-muted-foreground">Тип работы</Label>
-              <Input
+              <WorkTypeSelect
                 value={block.workType}
-                onChange={e => updateBlock(block.id, { workType: e.target.value })}
-                placeholder="служебные"
-                className="h-10 text-base sm:text-sm"
+                onChange={v => updateBlock(block.id, { workType: v })}
               />
             </div>
           </div>
@@ -150,12 +149,11 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
             <div className="grid grid-cols-2 sm:grid-cols-3 gap-2">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Время</Label>
-                <Input
+                <TimePicker
                   value={block.kneadTime}
-                  onChange={e => updateBlock(block.id, { kneadTime: e.target.value })}
-                  placeholder="6.10"
-                  className="h-10 text-base sm:text-sm"
-                  inputMode="decimal"
+                  onChange={v => updateBlock(block.id, { kneadTime: v })}
+                  defaultTime="06:10"
+                  ariaLabel="Время замеса"
                 />
               </div>
               <div className="space-y-1">
@@ -185,12 +183,11 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Начало</Label>
-                <Input
+                <TimePicker
                   value={block.cuttingStartTime}
-                  onChange={e => updateBlock(block.id, { cuttingStartTime: e.target.value })}
-                  placeholder="8.00"
-                  className="h-10 text-base sm:text-sm"
-                  inputMode="decimal"
+                  onChange={v => updateBlock(block.id, { cuttingStartTime: v })}
+                  defaultTime="08:00"
+                  ariaLabel="Начало разделки"
                 />
               </div>
               <div className="space-y-1">
@@ -295,12 +292,11 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
             <div className="grid grid-cols-1 sm:grid-cols-[8rem_1fr] gap-3">
               <div className="space-y-1">
                 <Label className="text-xs text-muted-foreground">Время</Label>
-                <Input
+                <TimePicker
                   value={block.bakingTime}
-                  onChange={e => updateBlock(block.id, { bakingTime: e.target.value })}
-                  placeholder="10.45"
-                  className="h-10 text-base sm:text-sm"
-                  inputMode="decimal"
+                  onChange={v => updateBlock(block.id, { bakingTime: v })}
+                  defaultTime="10:45"
+                  ariaLabel="Время выпечки"
                 />
               </div>
               <div className="space-y-1">
