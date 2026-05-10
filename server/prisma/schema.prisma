@@ -29,11 +29,12 @@ model Template {
 }
 
 model Worker {
-  id        String   @id @default(uuid())
-  name      String
-  shortName String
-  position  String?
-  createdAt DateTime @default(now())
+  id               String   @id @default(uuid())
+  name             String
+  shortName        String
+  position         String?
+  defaultPositions Json?
+  createdAt        DateTime @default(now())
 
   @@map("workers")
 }

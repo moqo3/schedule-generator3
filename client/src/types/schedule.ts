@@ -4,11 +4,15 @@ export interface Worker {
   name: string;
 }
 
+/** Map shift number ("1"|"2"|"3") -> position within that shift. */
+export type DefaultPositions = Partial<Record<'1' | '2' | '3', number>>;
+
 export interface WorkerOption {
   id: string;
   name: string;
   shortName: string;
   position: string | null;
+  defaultPositions: DefaultPositions | null;
   createdAt: string;
 }
 
