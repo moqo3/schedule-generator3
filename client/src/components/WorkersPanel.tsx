@@ -5,14 +5,50 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useScheduleStore } from '@/store/scheduleStore';
+import type { DefaultPositions } from '@/types/schedule';
+
+type ShiftKey = '1' | '2' | '3';
+const SHIFTS: ShiftKey[] = ['1', '2', '3'];
 
 interface DraftWorker {
   name: string;
   shortName: string;
   position: string;
+  /** Per-shift position string (raw input). Empty string = unassigned. */
+  defaults: Record<ShiftKey, string>;
 }
 
-const emptyDraft: DraftWorker = { name: '', shortName: '', position: '' };
+const emptyDraft: DraftWorker = {
+  name: '',
+  shortName: '',
+  position: '',
+  defaults: { '1': '', '2': '', '3': '' },
+};
+
+function parsePosition(value: string): number | null {
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  const n = parseInt(trimmed, 10);
+  if (!Number.isFinite(n) || n < 1) return null;
+  return n;
+}
+
+function buildDefaultPositions(d: Record<ShiftKey, string>): DefaultPositions | null {
+  const out: DefaultPositions = {};
+  for (const k of SHIFTS) {
+    const n = parsePosition(d[k]);
+    if (n !== null) out[k] = n;
+  }
+  return Object.keys(out).length === 0 ? null : out;
+}
+
+function defaultsFromOption(dp: DefaultPositions | null): Record<ShiftKey, string> {
+  return {
+    '1': dp?.['1'] ? String(dp['1']) : '',
+    '2': dp?.['2'] ? String(dp['2']) : '',
+    '3': dp?.['3'] ? String(dp['3']) : '',
+  };
+}
 
 export const WorkersPanel: React.FC = () => {
   const {
@@ -40,7 +76,12 @@ export const WorkersPanel: React.FC = () => {
     if (!shortName) return;
     const name = draft.name.trim() || shortName;
     const position = draft.position.trim() || null;
-    await createWorkerOption({ name, shortName, position });
+    await createWorkerOption({
+      name,
+      shortName,
+      position,
+      defaultPositions: buildDefaultPositions(draft.defaults),
+    });
     setDraft(emptyDraft);
   };
 
@@ -48,7 +89,12 @@ export const WorkersPanel: React.FC = () => {
     const w = workerOptions.find(x => x.id === id);
     if (!w) return;
     setEditingId(id);
-    setEditDraft({ name: w.name, shortName: w.shortName, position: w.position ?? '' });
+    setEditDraft({
+      name: w.name,
+      shortName: w.shortName,
+      position: w.position ?? '',
+      defaults: defaultsFromOption(w.defaultPositions),
+    });
   };
 
   const cancelEdit = () => {
@@ -64,8 +110,46 @@ export const WorkersPanel: React.FC = () => {
       name: editDraft.name.trim() || shortName,
       shortName,
       position: editDraft.position.trim() || null,
+      defaultPositions: buildDefaultPositions(editDraft.defaults),
     });
     cancelEdit();
+  };
+
+  const renderShiftInputs = (
+    values: Record<ShiftKey, string>,
+    onChange: (next: Record<ShiftKey, string>) => void,
+  ) => (
+    <div className="space-y-1">
+      <Label className="text-xs text-muted-foreground">
+        Позиция в смене (по умолчанию)
+      </Label>
+      <div className="grid grid-cols-3 gap-1.5">
+        {SHIFTS.map(k => (
+          <div key={k} className="flex items-center gap-1">
+            <span className="text-xs text-muted-foreground w-3 shrink-0">{k}</span>
+            <Input
+              value={values[k]}
+              onChange={e => onChange({ ...values, [k]: e.target.value })}
+              placeholder="—"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              className="h-10 text-base sm:text-sm tabular-nums px-2"
+            />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+
+  const renderShiftBadges = (dp: DefaultPositions | null) => {
+    if (!dp) return null;
+    const items = SHIFTS.filter(k => dp[k]).map(k => `${k}/${dp[k]}`);
+    if (items.length === 0) return null;
+    return (
+      <span className="ml-2 text-xs text-muted-foreground tabular-nums">
+        · смена/поз: {items.join(', ')}
+      </span>
+    );
   };
 
   return (
@@ -74,7 +158,8 @@ export const WorkersPanel: React.FC = () => {
         <CardHeader className="pb-2">
           <h3 className="font-semibold text-sm">Добавить работника</h3>
           <p className="text-xs text-muted-foreground">
-            Сокращение появится в выпадающих списках в редакторе расписания (например: ПГ, Ф, о.А)
+            Сокращение появится в выпадающих списках в редакторе расписания (например: ПГ, Ф, о.А).
+            «Позиция в смене» — куда работник встанет в разделке этой смены при создании нового расписания.
           </p>
         </CardHeader>
         <CardContent>
@@ -124,10 +209,15 @@ export const WorkersPanel: React.FC = () => {
                 }}
               />
             </div>
+            <div className="col-span-2 sm:col-span-1">
+              {renderShiftInputs(draft.defaults, next =>
+                setDraft({ ...draft, defaults: next })
+              )}
+            </div>
             <Button
               onClick={handleAdd}
               disabled={!draft.shortName.trim()}
-              className="h-10 col-span-2 sm:col-span-1"
+              className="h-10 col-span-2 sm:col-span-4"
             >
               <Plus className="h-4 w-4 mr-1" /> Добавить
             </Button>
@@ -172,7 +262,12 @@ export const WorkersPanel: React.FC = () => {
                           placeholder="Должность"
                           className="h-10 text-base sm:text-sm col-span-2 sm:col-span-1"
                         />
-                        <div className="flex gap-1 col-span-2 sm:col-span-1">
+                        <div className="col-span-2 sm:col-span-1">
+                          {renderShiftInputs(editDraft.defaults, next =>
+                            setEditDraft({ ...editDraft, defaults: next })
+                          )}
+                        </div>
+                        <div className="flex gap-1 col-span-2 sm:col-span-4">
                           <Button onClick={saveEdit} size="sm" className="h-10 flex-1">
                             <Save className="h-4 w-4 mr-1" /> Сохранить
                           </Button>
@@ -192,6 +287,7 @@ export const WorkersPanel: React.FC = () => {
                       {w.position && (
                         <span className="ml-2 text-xs text-muted-foreground">· {w.position}</span>
                       )}
+                      {renderShiftBadges(w.defaultPositions)}
                     </span>
                     <Button
                       variant="ghost"

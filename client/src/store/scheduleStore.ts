@@ -1,8 +1,54 @@
 import { create } from 'zustand';
-import type { Schedule, ScheduleBlock, Worker, Template, WorkerOption } from '@/types/schedule';
+import type {
+  Schedule,
+  ScheduleBlock,
+  Worker,
+  Template,
+  WorkerOption,
+  DefaultPositions,
+} from '@/types/schedule';
 import { createEmptyBlock, createEmptySchedule, normalizeBlock } from '@/types/schedule';
 import { api } from '@/lib/api';
 import { generateTelegramText } from '@/lib/telegram-generator';
+
+/**
+ * Pre-populate cuttingWorkers for a block based on each worker's
+ * `defaultPositions[order]`. Only kicks in for shifts 1/2/3 and only when
+ * the block has no cutting workers yet (so we never clobber user input).
+ *
+ * Workers are placed at their declared position, sorted ascending. Gaps in
+ * the position numbering are preserved as empty slots so positions stay
+ * stable across schedules ("ПГ всегда 3-й"). Multiple workers claiming the
+ * same position fall back to alphabetical order of shortName.
+ */
+function applyDefaultWorkers(block: ScheduleBlock, options: WorkerOption[]): ScheduleBlock {
+  if (block.isAssemblyBlock) return block;
+  if (block.cuttingWorkers.length > 0) return block;
+  const key = String(block.order) as '1' | '2' | '3';
+  if (key !== '1' && key !== '2' && key !== '3') return block;
+
+  const claims = options
+    .map(o => ({ option: o, pos: o.defaultPositions?.[key] }))
+    .filter((x): x is { option: WorkerOption; pos: number } => typeof x.pos === 'number')
+    .sort((a, b) => {
+      if (a.pos !== b.pos) return a.pos - b.pos;
+      return a.option.shortName.localeCompare(b.option.shortName, 'ru');
+    });
+  if (claims.length === 0) return block;
+
+  const maxPos = claims[claims.length - 1].pos;
+  const cuttingWorkers: Worker[] = [];
+  let cursor = 0;
+  for (let pos = 1; pos <= maxPos; pos++) {
+    const claim = claims[cursor]?.pos === pos ? claims[cursor++] : undefined;
+    cuttingWorkers.push({
+      id: crypto.randomUUID(),
+      position: pos,
+      name: claim ? claim.option.shortName : '',
+    });
+  }
+  return { ...block, cuttingWorkers };
+}
 
 export type ActiveTab = 'editor' | 'preview' | 'history' | 'templates' | 'workers';
 
@@ -49,8 +95,21 @@ interface ScheduleState {
   deleteTemplate: (id: string) => Promise<void>;
 
   loadWorkerOptions: () => Promise<void>;
-  createWorkerOption: (data: { name: string; shortName: string; position?: string | null }) => Promise<void>;
-  updateWorkerOption: (id: string, data: Partial<{ name: string; shortName: string; position: string | null }>) => Promise<void>;
+  createWorkerOption: (data: {
+    name: string;
+    shortName: string;
+    position?: string | null;
+    defaultPositions?: DefaultPositions | null;
+  }) => Promise<void>;
+  updateWorkerOption: (
+    id: string,
+    data: Partial<{
+      name: string;
+      shortName: string;
+      position: string | null;
+      defaultPositions: DefaultPositions | null;
+    }>,
+  ) => Promise<void>;
   deleteWorkerOption: (id: string) => Promise<void>;
 
   triggerAutosave: () => void;
@@ -84,9 +143,9 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   addBlock: () => {
-    const { schedule } = get();
+    const { schedule, workerOptions } = get();
     const newOrder = schedule.blocks.length + 1;
-    const newBlock = createEmptyBlock(newOrder);
+    const newBlock = applyDefaultWorkers(createEmptyBlock(newOrder), workerOptions);
     const updated = {
       ...schedule,
       blocks: [...schedule.blocks, newBlock],
@@ -311,7 +370,10 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   newSchedule: () => {
-    set({ schedule: createEmptySchedule(), generatedText: '', lastSaved: null });
+    const { workerOptions } = get();
+    const fresh = createEmptySchedule();
+    const blocks = fresh.blocks.map(b => applyDefaultWorkers(b, workerOptions));
+    set({ schedule: { ...fresh, blocks }, generatedText: '', lastSaved: null });
   },
 
   loadTemplates: async () => {
