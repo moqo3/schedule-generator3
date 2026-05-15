@@ -8,6 +8,7 @@ import { PreviewPanel } from '@/components/PreviewPanel';
 import { HistoryPanel } from '@/components/HistoryPanel';
 import { TemplatesPanel } from '@/components/TemplatesPanel';
 import { WorkersPanel } from '@/components/WorkersPanel';
+import { ImportPanel } from '@/components/ImportPanel';
 import { LoginPage } from '@/components/LoginPage';
 import { useScheduleStore } from '@/store/scheduleStore';
 import { useAuth } from '@/context/AuthContext';
@@ -178,7 +179,7 @@ const App: React.FC = () => {
         {/* Main Content */}
         <main className="max-w-5xl mx-auto px-3 sm:px-4 py-4 sm:py-6 pb-16 md:pb-10">
           <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>
-            <TabsList className="grid grid-cols-5 w-full h-auto p-1 mb-3 sm:mb-4">
+            <TabsList className="grid grid-cols-6 w-full h-auto p-1 mb-3 sm:mb-4">
               <TabsTrigger value="editor" className="text-xs sm:text-sm h-9 px-1 sm:px-3">
                 Редактор
               </TabsTrigger>
@@ -193,6 +194,9 @@ const App: React.FC = () => {
               </TabsTrigger>
               <TabsTrigger value="workers" className="text-xs sm:text-sm h-9 px-1 sm:px-3">
                 Работники
+              </TabsTrigger>
+              <TabsTrigger value="import" className="text-xs sm:text-sm h-9 px-1 sm:px-3">
+                Импорт
               </TabsTrigger>
             </TabsList>
 
@@ -214,6 +218,10 @@ const App: React.FC = () => {
 
             <TabsContent value="workers">
               <WorkersPanel />
+            </TabsContent>
+
+            <TabsContent value="import">
+              <ImportPanel />
             </TabsContent>
           </Tabs>
         </main>

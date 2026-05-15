@@ -8,6 +8,7 @@ import { schedulesRouter } from './routes/schedules';
 import { templatesRouter } from './routes/templates';
 import { workersRouter } from './routes/workers';
 import { authRouter } from './routes/auth';
+import { importRouter } from './routes/import';
 import { requireAuth } from './middleware/auth';
 
 dotenv.config();
@@ -34,6 +35,7 @@ app.use('/api/auth', authRouter);
 app.use('/api/schedules', requireAuth, schedulesRouter);
 app.use('/api/templates', requireAuth, templatesRouter);
 app.use('/api/workers', requireAuth, workersRouter);
+app.use('/api/import', requireAuth, importRouter);
 
 // Serve built client in production (Dockerfile copies client/dist to ./public)
 const publicDir = path.join(__dirname, '..', 'public');

@@ -1,4 +1,5 @@
 import type { Schedule, Template, WorkerOption, DefaultPositions } from '@/types/schedule';
+import type { AnalyzeResult, ApplyDefaultsResult, ImportSchedulesResult } from '@/types/import';
 
 const API_BASE = '/api';
 
@@ -77,4 +78,23 @@ export const api = {
   ) => request<WorkerOption>(`/workers/${id}`, { method: 'PUT', body: JSON.stringify(data) }),
   deleteWorker: (id: string) =>
     request<void>(`/workers/${id}`, { method: 'DELETE' }),
+
+  // Import
+  import: {
+    analyze: (text: string) =>
+      request<AnalyzeResult>('/import/analyze', {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+    applyDefaults: (defaults: Record<string, Partial<Record<'1' | '2' | '3', number>>>) =>
+      request<ApplyDefaultsResult>('/import/apply-defaults', {
+        method: 'POST',
+        body: JSON.stringify({ defaults }),
+      }),
+    importSchedules: (text: string) =>
+      request<ImportSchedulesResult>('/import/schedules', {
+        method: 'POST',
+        body: JSON.stringify({ text }),
+      }),
+  },
 };

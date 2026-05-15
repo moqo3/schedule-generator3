@@ -50,7 +50,7 @@ function applyDefaultWorkers(block: ScheduleBlock, options: WorkerOption[]): Sch
   return { ...block, cuttingWorkers };
 }
 
-export type ActiveTab = 'editor' | 'preview' | 'history' | 'templates' | 'workers';
+export type ActiveTab = 'editor' | 'preview' | 'history' | 'templates' | 'workers' | 'import';
 
 interface ScheduleState {
   schedule: Schedule;
