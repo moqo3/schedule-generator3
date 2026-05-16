@@ -24,30 +24,64 @@ import { generateTelegramText } from '@/lib/telegram-generator';
 function applyDefaultWorkers(block: ScheduleBlock, options: WorkerOption[]): ScheduleBlock {
   if (block.isAssemblyBlock) return block;
   if (block.cuttingWorkers.length > 0) return block;
-  const key = String(block.order) as '1' | '2' | '3';
-  if (key !== '1' && key !== '2' && key !== '3') return block;
+  const key = String(block.order);
 
-  const claims = options
-    .map(o => ({ option: o, pos: o.defaultPositions?.[key] }))
-    .filter((x): x is { option: WorkerOption; pos: number } => typeof x.pos === 'number')
-    .sort((a, b) => {
-      if (a.pos !== b.pos) return a.pos - b.pos;
-      return a.option.shortName.localeCompare(b.option.shortName, 'ru');
-    });
-  if (claims.length === 0) return block;
-
-  const maxPos = claims[claims.length - 1].pos;
-  const cuttingWorkers: Worker[] = [];
-  let cursor = 0;
-  for (let pos = 1; pos <= maxPos; pos++) {
-    const claim = claims[cursor]?.pos === pos ? claims[cursor++] : undefined;
-    cuttingWorkers.push({
-      id: crypto.randomUUID(),
-      position: pos,
-      name: claim ? claim.option.shortName : '',
-    });
+  // Apply cutting worker defaults (shifts 1/2/3 only)
+  let cuttingWorkers = block.cuttingWorkers;
+  if (key === '1' || key === '2' || key === '3') {
+    const claims = options
+      .filter(o => !o.shortName.startsWith('__'))
+      .map(o => ({ option: o, pos: o.defaultPositions?.[key as '1' | '2' | '3'] }))
+      .filter((x): x is { option: WorkerOption; pos: number } => typeof x.pos === 'number')
+      .sort((a, b) => {
+        if (a.pos !== b.pos) return a.pos - b.pos;
+        return a.option.shortName.localeCompare(b.option.shortName, 'ru');
+      });
+    if (claims.length > 0) {
+      const maxPos = claims[claims.length - 1].pos;
+      const workers: Worker[] = [];
+      let cursor = 0;
+      for (let pos = 1; pos <= maxPos; pos++) {
+        const claim = claims[cursor]?.pos === pos ? claims[cursor++] : undefined;
+        workers.push({
+          id: crypto.randomUUID(),
+          position: pos,
+          name: claim ? claim.option.shortName : '',
+        });
+      }
+      cuttingWorkers = workers;
+    }
   }
-  return { ...block, cuttingWorkers };
+
+  // Apply knead worker default
+  let kneadWorker = block.kneadWorker;
+  if (!kneadWorker) {
+    const kneadRecord = options.find(o => o.shortName === '__knead_defaults__');
+    if (kneadRecord?.defaultPositions) {
+      const kneadDefaults = kneadRecord.defaultPositions as unknown as Record<string, string>;
+      if (kneadDefaults[key]) {
+        kneadWorker = kneadDefaults[key];
+      }
+    }
+  }
+
+  // Apply baking workers default (senior + junior)
+  let bakingWorkers = block.bakingWorkers;
+  if (bakingWorkers.length === 0) {
+    const bakingRecord = options.find(o => o.shortName === '__baking_defaults__');
+    if (bakingRecord?.defaultPositions) {
+      const bakingDefaults = bakingRecord.defaultPositions as unknown as Record<string, { senior: string; junior: string | null }>;
+      const shiftBaking = bakingDefaults[key];
+      if (shiftBaking) {
+        bakingWorkers = [shiftBaking.senior];
+        if (shiftBaking.junior) {
+          bakingWorkers.push(shiftBaking.junior);
+        }
+      }
+    }
+  }
+
+  return { ...block, cuttingWorkers, kneadWorker, bakingWorkers };
 }
 
 export type ActiveTab = 'editor' | 'preview' | 'history' | 'templates' | 'workers' | 'import';

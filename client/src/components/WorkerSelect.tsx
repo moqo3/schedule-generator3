@@ -12,9 +12,9 @@ interface Props {
 export const WorkerSelect: React.FC<Props> = ({ value, onChange, placeholder, className, exclude }) => {
   const workerOptions = useScheduleStore(s => s.workerOptions);
 
-  const sorted = [...workerOptions].sort((a, b) =>
-    a.shortName.localeCompare(b.shortName, 'ru')
-  );
+  const sorted = [...workerOptions]
+    .filter(w => !w.shortName.startsWith('__'))
+    .sort((a, b) => a.shortName.localeCompare(b.shortName, 'ru'));
 
   const excludeSet = new Set(exclude ?? []);
   const filtered = sorted.filter(w => w.shortName === value || !excludeSet.has(w.shortName));

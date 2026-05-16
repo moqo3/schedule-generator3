@@ -1,5 +1,5 @@
 import type { Schedule, Template, WorkerOption, DefaultPositions } from '@/types/schedule';
-import type { AnalyzeResult, ApplyDefaultsResult, ImportSchedulesResult } from '@/types/import';
+import type { AnalyzeResult, ApplyDefaultsResult, ImportSchedulesResult, BakingShiftDefault } from '@/types/import';
 
 const API_BASE = '/api';
 
@@ -86,10 +86,14 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ text }),
       }),
-    applyDefaults: (defaults: Record<string, Partial<Record<'1' | '2' | '3', number>>>) =>
+    applyDefaults: (
+      defaults: Record<string, Partial<Record<'1' | '2' | '3', number>>>,
+      kneadDefaults?: Record<string, string>,
+      bakingDefaults?: Record<string, BakingShiftDefault>,
+    ) =>
       request<ApplyDefaultsResult>('/import/apply-defaults', {
         method: 'POST',
-        body: JSON.stringify({ defaults }),
+        body: JSON.stringify({ defaults, kneadDefaults, bakingDefaults }),
       }),
     importSchedules: (text: string) =>
       request<ImportSchedulesResult>('/import/schedules', {

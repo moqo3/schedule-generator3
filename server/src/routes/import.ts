@@ -3,10 +3,16 @@ import { prisma } from '../lib/prisma';
 import {
   parseTelegramSchedules,
   extractWorkerRecords,
+  extractKneadRecords,
+  extractBakingRecords,
   computeWorkerStats,
   computeDefaultPositions,
+  computeKneadDefaults,
+  computeBakingDefaults,
   type ParsedSchedule,
   type WorkerStats,
+  type KneadDefaults,
+  type BakingDefaults,
 } from '../lib/telegram-parser';
 
 export const importRouter = Router();
@@ -36,6 +42,11 @@ importRouter.post('/analyze', (req: Request, res: Response) => {
   const stats = computeWorkerStats(records);
   const defaults = computeDefaultPositions(records);
 
+  const kneadRecords = extractKneadRecords(schedules);
+  const bakingRecords = extractBakingRecords(schedules);
+  const kneadDefaults = computeKneadDefaults(kneadRecords);
+  const bakingDefaults = computeBakingDefaults(bakingRecords);
+
   const defaultsObj: Record<string, Partial<Record<'1' | '2' | '3', number>>> = {};
   for (const [name, positions] of defaults) {
     defaultsObj[name] = positions;
@@ -50,6 +61,8 @@ importRouter.post('/analyze', (req: Request, res: Response) => {
     totalRecords: records.length,
     workerStats: stats,
     suggestedDefaults: defaultsObj,
+    kneadDefaults,
+    bakingDefaults,
   });
 });
 
@@ -59,8 +72,10 @@ importRouter.post('/analyze', (req: Request, res: Response) => {
  * Creates missing workers and updates defaultPositions for existing ones.
  */
 importRouter.post('/apply-defaults', async (req: Request, res: Response) => {
-  const { defaults } = req.body as {
+  const { defaults, kneadDefaults, bakingDefaults } = req.body as {
     defaults?: Record<string, Partial<Record<'1' | '2' | '3', number>>>;
+    kneadDefaults?: KneadDefaults;
+    bakingDefaults?: BakingDefaults;
   };
   if (!defaults || typeof defaults !== 'object') {
     res.status(400).json({ error: 'defaults is required' });
@@ -91,6 +106,36 @@ importRouter.post('/apply-defaults', async (req: Request, res: Response) => {
           },
         });
         created.push(shortName);
+      }
+    }
+
+    // Store knead/baking defaults as special worker records
+    if (kneadDefaults) {
+      const existing = byShortName.get('__knead_defaults__');
+      const data = { defaultPositions: kneadDefaults };
+      if (existing) {
+        await prisma.worker.update({ where: { id: existing.id }, data });
+      } else {
+        await prisma.worker.create({
+          data: { name: '__knead_defaults__', shortName: '__knead_defaults__', ...data },
+        });
+      }
+    }
+    if (bakingDefaults) {
+      const existing = byShortName.get('__baking_defaults__');
+      if (existing) {
+        await prisma.worker.update({
+          where: { id: existing.id },
+          data: { defaultPositions: bakingDefaults },
+        });
+      } else {
+        await prisma.worker.create({
+          data: {
+            name: '__baking_defaults__',
+            shortName: '__baking_defaults__',
+            defaultPositions: bakingDefaults,
+          },
+        });
       }
     }
 
