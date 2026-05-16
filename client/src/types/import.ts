@@ -10,12 +10,19 @@ export interface WorkerStats {
   shifts: Record<string, WorkerShiftStats>;
 }
 
+export interface BakingShiftDefault {
+  senior: string;
+  junior: string | null;
+}
+
 export interface AnalyzeResult {
   schedulesCount: number;
   dateRange: { from: string; to: string };
   totalRecords: number;
   workerStats: WorkerStats[];
   suggestedDefaults: Record<string, Partial<Record<'1' | '2' | '3', number>>>;
+  kneadDefaults: Record<string, string>;
+  bakingDefaults: Record<string, BakingShiftDefault>;
 }
 
 export interface ApplyDefaultsResult {

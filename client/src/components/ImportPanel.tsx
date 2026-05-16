@@ -91,7 +91,11 @@ export const ImportPanel: React.FC = () => {
     setApplying(true);
     setError(null);
     try {
-      const data = await api.import.applyDefaults(result.suggestedDefaults);
+      const data = await api.import.applyDefaults(
+        result.suggestedDefaults,
+        result.kneadDefaults,
+        result.bakingDefaults,
+      );
       await loadWorkerOptions();
       setSuccessMessage(
         `Обновлено: ${data.updated.length} работников. Создано: ${data.created.length} новых.`
@@ -211,6 +215,40 @@ export const ImportPanel: React.FC = () => {
               <p className="text-xs text-muted-foreground text-center">
                 Период: {result.dateRange.from} — {result.dateRange.to}
               </p>
+            </CardContent>
+          </Card>
+
+          {/* Knead & Baking Defaults */}
+          <Card>
+            <CardHeader className="pb-2">
+              <h4 className="font-semibold text-sm">Замес и выпечка по умолчанию</h4>
+            </CardHeader>
+            <CardContent className="space-y-2">
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Замесчик по сменам:</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(result.kneadDefaults)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([shift, worker]) => (
+                      <span key={shift} className="inline-flex items-center rounded bg-orange-100 text-orange-800 text-xs px-2 py-1">
+                        Смена {shift}: <span className="font-semibold ml-1">{worker}</span>
+                      </span>
+                    ))}
+                </div>
+              </div>
+              <div className="space-y-1">
+                <p className="text-xs font-medium text-muted-foreground">Выпечка по сменам (старший + младший):</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.entries(result.bakingDefaults)
+                    .sort(([a], [b]) => a.localeCompare(b))
+                    .map(([shift, data]) => (
+                      <span key={shift} className="inline-flex items-center rounded bg-amber-100 text-amber-800 text-xs px-2 py-1">
+                        Смена {shift}: <span className="font-semibold ml-1">{data.senior}</span>
+                        {data.junior && <span className="ml-1">+ {data.junior}</span>}
+                      </span>
+                    ))}
+                </div>
+              </div>
             </CardContent>
           </Card>
 

@@ -47,6 +47,19 @@ export interface WorkerShiftRecord {
   workerName: string;
 }
 
+export interface KneadRecord {
+  date: string;
+  shift: number;
+  workerName: string;
+}
+
+export interface BakingRecord {
+  date: string;
+  shift: number;
+  seniorWorker: string;
+  juniorWorker: string | null;
+}
+
 export interface WorkerStats {
   workerName: string;
   totalAppearances: number;
@@ -55,6 +68,14 @@ export interface WorkerStats {
     positions: Record<number, number>;  // position -> count
     mostFrequentPosition: number;
   }>;
+}
+
+export interface KneadDefaults {
+  [shift: string]: string;  // shift -> most frequent worker name
+}
+
+export interface BakingDefaults {
+  [shift: string]: { senior: string; junior: string | null };
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -503,6 +524,143 @@ export function computeDefaultPositions(
     }
     if (Object.keys(defaults).length > 0) {
       result.set(stat.workerName, defaults);
+    }
+  }
+
+  return result;
+}
+
+// ── Knead & Baking analytics ─────────────────────────────────────────────────
+
+/**
+ * Extract knead worker records from parsed schedules.
+ * Each block has one kneadWorker (the person who does the замес).
+ */
+export function extractKneadRecords(schedules: ParsedSchedule[]): KneadRecord[] {
+  const records: KneadRecord[] = [];
+
+  for (const schedule of schedules) {
+    for (const block of schedule.blocks) {
+      if (block.isAssemblyBlock) continue;
+      if (!block.kneadWorker) continue;
+
+      const name = block.kneadWorker.replace(/\.$/, '').trim();
+      if (name) {
+        records.push({
+          date: schedule.date,
+          shift: block.order,
+          workerName: name,
+        });
+      }
+    }
+  }
+
+  return records;
+}
+
+/**
+ * Extract baking worker records from parsed schedules.
+ * bakingWorkers[0] = senior, bakingWorkers[1] = junior.
+ */
+export function extractBakingRecords(schedules: ParsedSchedule[]): BakingRecord[] {
+  const records: BakingRecord[] = [];
+
+  for (const schedule of schedules) {
+    for (const block of schedule.blocks) {
+      if (block.isAssemblyBlock) continue;
+      if (block.bakingWorkers.length === 0) continue;
+
+      records.push({
+        date: schedule.date,
+        shift: block.order,
+        seniorWorker: block.bakingWorkers[0],
+        juniorWorker: block.bakingWorkers.length > 1 ? block.bakingWorkers[1] : null,
+      });
+    }
+  }
+
+  return records;
+}
+
+/**
+ * Compute default knead worker per shift.
+ * Returns: { "1": "ДИ", "2": "ДИ", "3": "СЛ" }
+ */
+export function computeKneadDefaults(records: KneadRecord[]): KneadDefaults {
+  // shift -> workerName -> count
+  const shiftCounts = new Map<string, Map<string, number>>();
+
+  for (const r of records) {
+    const key = String(r.shift);
+    if (!shiftCounts.has(key)) shiftCounts.set(key, new Map());
+    const wMap = shiftCounts.get(key)!;
+    wMap.set(r.workerName, (wMap.get(r.workerName) || 0) + 1);
+  }
+
+  const result: KneadDefaults = {};
+  for (const [shift, wMap] of shiftCounts) {
+    let best = '';
+    let bestCount = 0;
+    for (const [name, count] of wMap) {
+      if (count > bestCount) {
+        bestCount = count;
+        best = name;
+      }
+    }
+    if (best) result[shift] = best;
+  }
+
+  return result;
+}
+
+/**
+ * Compute default baking workers (senior + junior) per shift.
+ * Returns: { "1": { senior: "Ф", junior: "ПГ" }, "2": ... }
+ */
+export function computeBakingDefaults(records: BakingRecord[]): BakingDefaults {
+  // shift -> seniorName -> count
+  const seniorCounts = new Map<string, Map<string, number>>();
+  // shift -> juniorName -> count
+  const juniorCounts = new Map<string, Map<string, number>>();
+
+  for (const r of records) {
+    const key = String(r.shift);
+    if (!seniorCounts.has(key)) seniorCounts.set(key, new Map());
+    const sMap = seniorCounts.get(key)!;
+    sMap.set(r.seniorWorker, (sMap.get(r.seniorWorker) || 0) + 1);
+
+    if (r.juniorWorker) {
+      if (!juniorCounts.has(key)) juniorCounts.set(key, new Map());
+      const jMap = juniorCounts.get(key)!;
+      jMap.set(r.juniorWorker, (jMap.get(r.juniorWorker) || 0) + 1);
+    }
+  }
+
+  const result: BakingDefaults = {};
+  for (const [shift, sMap] of seniorCounts) {
+    let bestSenior = '';
+    let bestSeniorCount = 0;
+    for (const [name, count] of sMap) {
+      if (count > bestSeniorCount) {
+        bestSeniorCount = count;
+        bestSenior = name;
+      }
+    }
+
+    let bestJunior: string | null = null;
+    const jMap = juniorCounts.get(shift);
+    if (jMap) {
+      let bestJuniorCount = 0;
+      for (const [name, count] of jMap) {
+        if (count > bestJuniorCount) {
+          bestJuniorCount = count;
+          bestJunior = name;
+        }
+      }
+    }
+
+    if (bestSenior) {
+      result[shift] = { senior: bestSenior, junior: bestJunior };
     }
   }
 

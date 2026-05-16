@@ -12,9 +12,9 @@ interface Props {
 export const WorkerMultiSelect: React.FC<Props> = ({ values, onChange, placeholder }) => {
   const workerOptions = useScheduleStore(s => s.workerOptions);
 
-  const sorted = [...workerOptions].sort((a, b) =>
-    a.shortName.localeCompare(b.shortName, 'ru')
-  );
+  const sorted = [...workerOptions]
+    .filter(w => !w.shortName.startsWith('__'))
+    .sort((a, b) => a.shortName.localeCompare(b.shortName, 'ru'));
 
   const remove = (idx: number) => {
     const next = values.slice();

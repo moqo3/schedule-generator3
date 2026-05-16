@@ -67,9 +67,9 @@ export const WorkersPanel: React.FC = () => {
     loadWorkerOptions();
   }, [loadWorkerOptions]);
 
-  const sorted = [...workerOptions].sort((a, b) =>
-    a.shortName.localeCompare(b.shortName, 'ru')
-  );
+  const sorted = [...workerOptions]
+    .filter(w => !w.shortName.startsWith('__'))
+    .sort((a, b) => a.shortName.localeCompare(b.shortName, 'ru'));
 
   const handleAdd = async () => {
     const shortName = draft.shortName.trim();
