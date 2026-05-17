@@ -10,10 +10,6 @@ import type { AnalyzeResult, WorkerStats } from '@/types/import';
 type Step = 'input' | 'results';
 
 const SHIFT_LABELS: Record<string, string> = { '1': '1 смена', '2': '2 смена', '3': '3 смена', '4': '4 смена' };
-const DAY_SHORT: Record<string, string> = {
-  'Понедельник': 'Пн', 'Вторник': 'Вт', 'Среда': 'Ср',
-  'Четверг': 'Чт', 'Пятница': 'Пт', 'Суббота': 'Сб', 'Воскресенье': 'Вс',
-};
 const DAY_ORDER = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
 function PositionBadges({ positions }: { positions: Record<number, number> }) {
