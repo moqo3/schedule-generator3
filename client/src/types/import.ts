@@ -15,14 +15,19 @@ export interface BakingShiftDefault {
   junior: string | null;
 }
 
+/** Day-aware defaults: dayOfWeek -> shift -> position/worker */
+export type DayAwareDefaults = Record<string, Partial<Record<string, number>>>;
+export type DayAwareKneadDefaults = Record<string, Record<string, string>>;
+export type DayAwareBakingDefaults = Record<string, Record<string, BakingShiftDefault>>;
+
 export interface AnalyzeResult {
   schedulesCount: number;
   dateRange: { from: string; to: string };
   totalRecords: number;
   workerStats: WorkerStats[];
-  suggestedDefaults: Record<string, Partial<Record<'1' | '2' | '3', number>>>;
-  kneadDefaults: Record<string, string>;
-  bakingDefaults: Record<string, BakingShiftDefault>;
+  suggestedDefaults: Record<string, DayAwareDefaults>;
+  kneadDefaults: DayAwareKneadDefaults;
+  bakingDefaults: DayAwareBakingDefaults;
 }
 
 export interface ApplyDefaultsResult {
