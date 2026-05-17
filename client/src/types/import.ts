@@ -38,4 +38,5 @@ export interface ApplyDefaultsResult {
 export interface ImportSchedulesResult {
   imported: { id: string; date: string; dayOfWeek: string }[];
   count: number;
+  defaultsApplied: ApplyDefaultsResult | null;
 }

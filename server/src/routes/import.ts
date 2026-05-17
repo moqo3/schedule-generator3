@@ -71,6 +71,93 @@ importRouter.post('/analyze', (req: Request, res: Response) => {
 });
 
 /**
+ * Reusable: compute day-aware defaults from parsed schedules and apply to DB.
+ * Returns { created, updated } arrays of worker shortNames.
+ */
+async function applyDefaultsFromSchedules(
+  schedules: ParsedSchedule[],
+): Promise<{ created: string[]; updated: string[] }> {
+  const records = extractWorkerRecords(schedules);
+  const dayDefaults = computeDayAwareDefaultPositions(records);
+  const dayKneadDefaults = computeDayAwareKneadDefaults(schedules);
+  const dayBakingDefaults = computeDayAwareBakingDefaults(schedules);
+
+  const defaults: Record<string, Record<string, Partial<Record<string, number>>>> = {};
+  for (const [name, positions] of dayDefaults) {
+    defaults[name] = positions;
+  }
+
+  return applyDefaultsToDB(defaults, dayKneadDefaults, dayBakingDefaults);
+}
+
+/**
+ * Reusable: write computed defaults into the DB.
+ */
+async function applyDefaultsToDB(
+  defaults: Record<string, Record<string, Partial<Record<string, number>>>>,
+  kneadDefaults?: DayAwareKneadDefaults,
+  bakingDefaults?: DayAwareBakingDefaults,
+): Promise<{ created: string[]; updated: string[] }> {
+  const existingWorkers = await prisma.worker.findMany();
+  const byShortName = new Map(existingWorkers.map(w => [w.shortName, w]));
+
+  const created: string[] = [];
+  const updated: string[] = [];
+
+  for (const [shortName, positions] of Object.entries(defaults)) {
+    const existing = byShortName.get(shortName);
+    if (existing) {
+      await prisma.worker.update({
+        where: { id: existing.id },
+        data: { defaultPositions: positions },
+      });
+      updated.push(shortName);
+    } else {
+      await prisma.worker.create({
+        data: {
+          name: shortName,
+          shortName,
+          defaultPositions: positions,
+        },
+      });
+      created.push(shortName);
+    }
+  }
+
+  // Store knead/baking defaults as special worker records
+  if (kneadDefaults) {
+    const existing = byShortName.get('__knead_defaults__');
+    const data = { defaultPositions: kneadDefaults };
+    if (existing) {
+      await prisma.worker.update({ where: { id: existing.id }, data });
+    } else {
+      await prisma.worker.create({
+        data: { name: '__knead_defaults__', shortName: '__knead_defaults__', ...data },
+      });
+    }
+  }
+  if (bakingDefaults) {
+    const existing = byShortName.get('__baking_defaults__');
+    if (existing) {
+      await prisma.worker.update({
+        where: { id: existing.id },
+        data: { defaultPositions: bakingDefaults },
+      });
+    } else {
+      await prisma.worker.create({
+        data: {
+          name: '__baking_defaults__',
+          shortName: '__baking_defaults__',
+          defaultPositions: bakingDefaults,
+        },
+      });
+    }
+  }
+
+  return { created, updated };
+}
+
+/**
  * POST /api/import/apply-defaults
  * Body: { defaults: Record<string, Partial<Record<'1'|'2'|'3', number>>> }
  * Creates missing workers and updates defaultPositions for existing ones.
@@ -87,63 +174,8 @@ importRouter.post('/apply-defaults', async (req: Request, res: Response) => {
   }
 
   try {
-    const existingWorkers = await prisma.worker.findMany();
-    const byShortName = new Map(existingWorkers.map(w => [w.shortName, w]));
-
-    const created: string[] = [];
-    const updated: string[] = [];
-
-    for (const [shortName, positions] of Object.entries(defaults)) {
-      const existing = byShortName.get(shortName);
-      if (existing) {
-        await prisma.worker.update({
-          where: { id: existing.id },
-          data: { defaultPositions: positions },
-        });
-        updated.push(shortName);
-      } else {
-        await prisma.worker.create({
-          data: {
-            name: shortName,
-            shortName,
-            defaultPositions: positions,
-          },
-        });
-        created.push(shortName);
-      }
-    }
-
-    // Store knead/baking defaults as special worker records
-    if (kneadDefaults) {
-      const existing = byShortName.get('__knead_defaults__');
-      const data = { defaultPositions: kneadDefaults };
-      if (existing) {
-        await prisma.worker.update({ where: { id: existing.id }, data });
-      } else {
-        await prisma.worker.create({
-          data: { name: '__knead_defaults__', shortName: '__knead_defaults__', ...data },
-        });
-      }
-    }
-    if (bakingDefaults) {
-      const existing = byShortName.get('__baking_defaults__');
-      if (existing) {
-        await prisma.worker.update({
-          where: { id: existing.id },
-          data: { defaultPositions: bakingDefaults },
-        });
-      } else {
-        await prisma.worker.create({
-          data: {
-            name: '__baking_defaults__',
-            shortName: '__baking_defaults__',
-            defaultPositions: bakingDefaults,
-          },
-        });
-      }
-    }
-
-    res.json({ created, updated });
+    const result = await applyDefaultsToDB(defaults, kneadDefaults, bakingDefaults);
+    res.json(result);
   } catch (error) {
     console.error('Error applying defaults:', error);
     res.status(500).json({ error: 'Failed to apply defaults' });
@@ -205,7 +237,19 @@ importRouter.post('/schedules', async (req: Request, res: Response) => {
       imported.push({ id: created.id, date: created.date, dayOfWeek: created.dayOfWeek });
     }
 
-    res.status(201).json({ imported, count: imported.length });
+    // Auto-recompute and apply default positions from imported data
+    let defaultsApplied: { created: string[]; updated: string[] } | null = null;
+    try {
+      defaultsApplied = await applyDefaultsFromSchedules(parsed);
+    } catch (err) {
+      console.error('Warning: auto-apply defaults failed (schedules still imported):', err);
+    }
+
+    res.status(201).json({
+      imported,
+      count: imported.length,
+      defaultsApplied,
+    });
   } catch (error) {
     console.error('Error importing schedules:', error);
     res.status(500).json({ error: 'Failed to import schedules' });

@@ -115,7 +115,15 @@ export const ImportPanel: React.FC = () => {
     try {
       const data = await api.import.importSchedules(text);
       await loadSchedules();
-      setSuccessMessage(`Импортировано ${data.count} расписаний в историю.`);
+      await loadWorkerOptions();
+      let msg = `Импортировано ${data.count} расписаний в историю.`;
+      if (data.defaultsApplied) {
+        const { created, updated } = data.defaultsApplied;
+        msg += ` Позиции обновлены: ${updated.length} работников`;
+        if (created.length > 0) msg += `, создано ${created.length} новых`;
+        msg += '.';
+      }
+      setSuccessMessage(msg);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка импорта');
     } finally {
