@@ -9,7 +9,12 @@ import type { AnalyzeResult, WorkerStats } from '@/types/import';
 
 type Step = 'input' | 'results';
 
-const SHIFT_LABELS: Record<string, string> = { '1': '1 смена', '2': '2 смена', '3': '3 смена' };
+const SHIFT_LABELS: Record<string, string> = { '1': '1 смена', '2': '2 смена', '3': '3 смена', '4': '4 смена' };
+const DAY_SHORT: Record<string, string> = {
+  'Понедельник': 'Пн', 'Вторник': 'Вт', 'Среда': 'Ср',
+  'Четверг': 'Чт', 'Пятница': 'Пт', 'Суббота': 'Сб', 'Воскресенье': 'Вс',
+};
+const DAY_ORDER = ['Понедельник', 'Вторник', 'Среда', 'Четверг', 'Пятница', 'Суббота', 'Воскресенье'];
 
 function PositionBadges({ positions }: { positions: Record<number, number> }) {
   const entries = Object.entries(positions)
@@ -218,37 +223,34 @@ export const ImportPanel: React.FC = () => {
             </CardContent>
           </Card>
 
-          {/* Knead & Baking Defaults */}
+          {/* Knead & Baking Defaults — Day-aware */}
           <Card>
             <CardHeader className="pb-2">
-              <h4 className="font-semibold text-sm">Замес и выпечка по умолчанию</h4>
+              <h4 className="font-semibold text-sm">Замес и выпечка по дням</h4>
             </CardHeader>
-            <CardContent className="space-y-2">
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Замесчик по сменам:</p>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(result.kneadDefaults)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([shift, worker]) => (
-                      <span key={shift} className="inline-flex items-center rounded bg-orange-100 text-orange-800 text-xs px-2 py-1">
-                        Смена {shift}: <span className="font-semibold ml-1">{worker}</span>
-                      </span>
-                    ))}
+            <CardContent className="space-y-3">
+              {DAY_ORDER.filter(day => result.kneadDefaults[day] || result.bakingDefaults[day]).map(day => (
+                <div key={day} className="space-y-1">
+                  <p className="text-xs font-semibold">{day}</p>
+                  <div className="flex flex-wrap gap-2">
+                    {result.kneadDefaults[day] && Object.entries(result.kneadDefaults[day])
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([shift, worker]) => (
+                        <span key={`k-${shift}`} className="inline-flex items-center rounded bg-orange-100 text-orange-800 text-xs px-2 py-1">
+                          см.{shift} замес: <span className="font-semibold ml-1">{worker}</span>
+                        </span>
+                      ))}
+                    {result.bakingDefaults[day] && Object.entries(result.bakingDefaults[day])
+                      .sort(([a], [b]) => a.localeCompare(b))
+                      .map(([shift, data]) => (
+                        <span key={`b-${shift}`} className="inline-flex items-center rounded bg-amber-100 text-amber-800 text-xs px-2 py-1">
+                          см.{shift} выпечка: <span className="font-semibold ml-1">{data.senior}</span>
+                          {data.junior && <span className="ml-1">+ {data.junior}</span>}
+                        </span>
+                      ))}
+                  </div>
                 </div>
-              </div>
-              <div className="space-y-1">
-                <p className="text-xs font-medium text-muted-foreground">Выпечка по сменам (старший + младший):</p>
-                <div className="flex flex-wrap gap-2">
-                  {Object.entries(result.bakingDefaults)
-                    .sort(([a], [b]) => a.localeCompare(b))
-                    .map(([shift, data]) => (
-                      <span key={shift} className="inline-flex items-center rounded bg-amber-100 text-amber-800 text-xs px-2 py-1">
-                        Смена {shift}: <span className="font-semibold ml-1">{data.senior}</span>
-                        {data.junior && <span className="ml-1">+ {data.junior}</span>}
-                      </span>
-                    ))}
-                </div>
-              </div>
+              ))}
             </CardContent>
           </Card>
 

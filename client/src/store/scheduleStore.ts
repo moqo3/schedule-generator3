@@ -6,8 +6,9 @@ import type {
   Template,
   WorkerOption,
   DefaultPositions,
+  ShiftPositions,
 } from '@/types/schedule';
-import { createEmptyBlock, createEmptySchedule, normalizeBlock } from '@/types/schedule';
+import { createEmptyBlock, createEmptySchedule, normalizeBlock, getPositionsForDay } from '@/types/schedule';
 import { api } from '@/lib/api';
 import { generateTelegramText } from '@/lib/telegram-generator';
 
@@ -21,17 +22,22 @@ import { generateTelegramText } from '@/lib/telegram-generator';
  * stable across schedules ("ПГ всегда 3-й"). Multiple workers claiming the
  * same position fall back to alphabetical order of shortName.
  */
-function applyDefaultWorkers(block: ScheduleBlock, options: WorkerOption[]): ScheduleBlock {
+function applyDefaultWorkers(block: ScheduleBlock, options: WorkerOption[], dayOfWeek?: string): ScheduleBlock {
   if (block.isAssemblyBlock) return block;
   if (block.cuttingWorkers.length > 0) return block;
-  const key = String(block.order);
+  const key = String(block.order) as '1' | '2' | '3' | '4';
 
-  // Apply cutting worker defaults (shifts 1/2/3 only)
+  // Apply cutting worker defaults (day-aware)
   let cuttingWorkers = block.cuttingWorkers;
-  if (key === '1' || key === '2' || key === '3') {
+  if (key === '1' || key === '2' || key === '3' || key === '4') {
     const claims = options
       .filter(o => !o.shortName.startsWith('__'))
-      .map(o => ({ option: o, pos: o.defaultPositions?.[key as '1' | '2' | '3'] }))
+      .map(o => {
+        const positions = dayOfWeek
+          ? getPositionsForDay(o.defaultPositions, dayOfWeek)
+          : (o.defaultPositions as ShiftPositions | null);
+        return { option: o, pos: positions?.[key] };
+      })
       .filter((x): x is { option: WorkerOption; pos: number } => typeof x.pos === 'number')
       .sort((a, b) => {
         if (a.pos !== b.pos) return a.pos - b.pos;
@@ -53,25 +59,41 @@ function applyDefaultWorkers(block: ScheduleBlock, options: WorkerOption[]): Sch
     }
   }
 
-  // Apply knead worker default
+  // Apply knead worker default (day-aware)
   let kneadWorker = block.kneadWorker;
   if (!kneadWorker) {
     const kneadRecord = options.find(o => o.shortName === '__knead_defaults__');
     if (kneadRecord?.defaultPositions) {
-      const kneadDefaults = kneadRecord.defaultPositions as unknown as Record<string, string>;
-      if (kneadDefaults[key]) {
-        kneadWorker = kneadDefaults[key];
+      const kneadRaw = kneadRecord.defaultPositions as unknown as Record<string, unknown>;
+      // Day-aware: { "Понедельник": { "1": "Ди" }, ... } or legacy: { "1": "Ди" }
+      let kneadForShift: string | undefined;
+      if (dayOfWeek && kneadRaw[dayOfWeek] && typeof kneadRaw[dayOfWeek] === 'object') {
+        kneadForShift = (kneadRaw[dayOfWeek] as Record<string, string>)[key];
+      }
+      if (!kneadForShift && typeof kneadRaw[key] === 'string') {
+        kneadForShift = kneadRaw[key] as string;
+      }
+      if (kneadForShift) {
+        kneadWorker = kneadForShift;
       }
     }
   }
 
-  // Apply baking workers default (senior + junior)
+  // Apply baking workers default (day-aware, senior + junior)
   let bakingWorkers = block.bakingWorkers;
   if (bakingWorkers.length === 0) {
     const bakingRecord = options.find(o => o.shortName === '__baking_defaults__');
     if (bakingRecord?.defaultPositions) {
-      const bakingDefaults = bakingRecord.defaultPositions as unknown as Record<string, { senior: string; junior: string | null }>;
-      const shiftBaking = bakingDefaults[key];
+      const bakingRaw = bakingRecord.defaultPositions as unknown as Record<string, unknown>;
+      let shiftBaking: { senior: string; junior: string | null } | undefined;
+      // Day-aware format
+      if (dayOfWeek && bakingRaw[dayOfWeek] && typeof bakingRaw[dayOfWeek] === 'object') {
+        shiftBaking = (bakingRaw[dayOfWeek] as Record<string, { senior: string; junior: string | null }>)[key];
+      }
+      // Legacy fallback
+      if (!shiftBaking && bakingRaw[key] && typeof bakingRaw[key] === 'object') {
+        shiftBaking = bakingRaw[key] as { senior: string; junior: string | null };
+      }
       if (shiftBaking) {
         bakingWorkers = [shiftBaking.senior];
         if (shiftBaking.junior) {
@@ -179,7 +201,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   addBlock: () => {
     const { schedule, workerOptions } = get();
     const newOrder = schedule.blocks.length + 1;
-    const newBlock = applyDefaultWorkers(createEmptyBlock(newOrder), workerOptions);
+    const newBlock = applyDefaultWorkers(createEmptyBlock(newOrder), workerOptions, schedule.dayOfWeek);
     const updated = {
       ...schedule,
       blocks: [...schedule.blocks, newBlock],
@@ -406,7 +428,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   newSchedule: () => {
     const { workerOptions } = get();
     const fresh = createEmptySchedule();
-    const blocks = fresh.blocks.map(b => applyDefaultWorkers(b, workerOptions));
+    const blocks = fresh.blocks.map(b => applyDefaultWorkers(b, workerOptions, fresh.dayOfWeek));
     set({ schedule: { ...fresh, blocks }, generatedText: '', lastSaved: null });
   },
 

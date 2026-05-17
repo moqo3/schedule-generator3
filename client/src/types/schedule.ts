@@ -5,7 +5,37 @@ export interface Worker {
 }
 
 /** Map shift number ("1"|"2"|"3") -> position within that shift. */
-export type DefaultPositions = Partial<Record<'1' | '2' | '3', number>>;
+export type ShiftPositions = Partial<Record<'1' | '2' | '3' | '4', number>>;
+
+/**
+ * Day-of-week aware default positions.
+ * Maps dayOfWeek -> shift -> position.
+ * Example: { "Понедельник": { "1": 3, "2": 5 }, "Вторник": { "1": 2 } }
+ *
+ * Legacy format (shift -> position) is also supported for backwards compat.
+ */
+export type DefaultPositions = Record<string, ShiftPositions> | ShiftPositions;
+
+/** Check if defaultPositions uses the new day-aware format. */
+export function isDayAwarePositions(dp: DefaultPositions): dp is Record<string, ShiftPositions> {
+  const keys = Object.keys(dp);
+  if (keys.length === 0) return false;
+  return typeof Object.values(dp)[0] === 'object' && !Array.isArray(Object.values(dp)[0])
+    && keys.some(k => DAYS_OF_WEEK.includes(k as typeof DAYS_OF_WEEK[number]));
+}
+
+/** Extract ShiftPositions for a given day, falling back to legacy format. */
+export function getPositionsForDay(
+  dp: DefaultPositions | null,
+  dayOfWeek: string,
+): ShiftPositions | null {
+  if (!dp) return null;
+  if (isDayAwarePositions(dp)) {
+    return (dp[dayOfWeek] as ShiftPositions) ?? null;
+  }
+  // Legacy: shift -> position directly
+  return dp as ShiftPositions;
+}
 
 export interface WorkerOption {
   id: string;

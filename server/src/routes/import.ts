@@ -9,10 +9,15 @@ import {
   computeDefaultPositions,
   computeKneadDefaults,
   computeBakingDefaults,
+  computeDayAwareDefaultPositions,
+  computeDayAwareKneadDefaults,
+  computeDayAwareBakingDefaults,
   type ParsedSchedule,
   type WorkerStats,
   type KneadDefaults,
   type BakingDefaults,
+  type DayAwareKneadDefaults,
+  type DayAwareBakingDefaults,
 } from '../lib/telegram-parser';
 
 export const importRouter = Router();
@@ -40,15 +45,14 @@ importRouter.post('/analyze', (req: Request, res: Response) => {
 
   const records = extractWorkerRecords(schedules);
   const stats = computeWorkerStats(records);
-  const defaults = computeDefaultPositions(records);
 
-  const kneadRecords = extractKneadRecords(schedules);
-  const bakingRecords = extractBakingRecords(schedules);
-  const kneadDefaults = computeKneadDefaults(kneadRecords);
-  const bakingDefaults = computeBakingDefaults(bakingRecords);
+  // Day-aware defaults
+  const dayDefaults = computeDayAwareDefaultPositions(records);
+  const dayKneadDefaults = computeDayAwareKneadDefaults(schedules);
+  const dayBakingDefaults = computeDayAwareBakingDefaults(schedules);
 
-  const defaultsObj: Record<string, Partial<Record<'1' | '2' | '3', number>>> = {};
-  for (const [name, positions] of defaults) {
+  const defaultsObj: Record<string, Record<string, Partial<Record<string, number>>>> = {};
+  for (const [name, positions] of dayDefaults) {
     defaultsObj[name] = positions;
   }
 
@@ -61,8 +65,8 @@ importRouter.post('/analyze', (req: Request, res: Response) => {
     totalRecords: records.length,
     workerStats: stats,
     suggestedDefaults: defaultsObj,
-    kneadDefaults,
-    bakingDefaults,
+    kneadDefaults: dayKneadDefaults,
+    bakingDefaults: dayBakingDefaults,
   });
 });
 
@@ -73,9 +77,9 @@ importRouter.post('/analyze', (req: Request, res: Response) => {
  */
 importRouter.post('/apply-defaults', async (req: Request, res: Response) => {
   const { defaults, kneadDefaults, bakingDefaults } = req.body as {
-    defaults?: Record<string, Partial<Record<'1' | '2' | '3', number>>>;
-    kneadDefaults?: KneadDefaults;
-    bakingDefaults?: BakingDefaults;
+    defaults?: Record<string, Record<string, Partial<Record<string, number>>>>;
+    kneadDefaults?: DayAwareKneadDefaults;
+    bakingDefaults?: DayAwareBakingDefaults;
   };
   if (!defaults || typeof defaults !== 'object') {
     res.status(400).json({ error: 'defaults is required' });

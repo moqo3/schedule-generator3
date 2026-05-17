@@ -5,10 +5,15 @@ import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
 import { useScheduleStore } from '@/store/scheduleStore';
-import type { DefaultPositions } from '@/types/schedule';
+import type { DefaultPositions, ShiftPositions } from '@/types/schedule';
+import { isDayAwarePositions, DAYS_OF_WEEK } from '@/types/schedule';
 
-type ShiftKey = '1' | '2' | '3';
-const SHIFTS: ShiftKey[] = ['1', '2', '3'];
+type ShiftKey = '1' | '2' | '3' | '4';
+const SHIFTS: ShiftKey[] = ['1', '2', '3', '4'];
+const DAY_SHORT: Record<string, string> = {
+  'Понедельник': 'Пн', 'Вторник': 'Вт', 'Среда': 'Ср',
+  'Четверг': 'Чт', 'Пятница': 'Пт', 'Суббота': 'Сб', 'Воскресенье': 'Вс',
+};
 
 interface DraftWorker {
   name: string;
@@ -22,7 +27,7 @@ const emptyDraft: DraftWorker = {
   name: '',
   shortName: '',
   position: '',
-  defaults: { '1': '', '2': '', '3': '' },
+  defaults: { '1': '', '2': '', '3': '', '4': '' },
 };
 
 function parsePosition(value: string): number | null {
@@ -33,8 +38,8 @@ function parsePosition(value: string): number | null {
   return n;
 }
 
-function buildDefaultPositions(d: Record<ShiftKey, string>): DefaultPositions | null {
-  const out: DefaultPositions = {};
+function buildDefaultPositions(d: Record<ShiftKey, string>): ShiftPositions | null {
+  const out: ShiftPositions = {};
   for (const k of SHIFTS) {
     const n = parsePosition(d[k]);
     if (n !== null) out[k] = n;
@@ -43,10 +48,15 @@ function buildDefaultPositions(d: Record<ShiftKey, string>): DefaultPositions | 
 }
 
 function defaultsFromOption(dp: DefaultPositions | null): Record<ShiftKey, string> {
+  if (!dp) return { '1': '', '2': '', '3': '', '4': '' };
+  // Day-aware: can't represent in simple shift inputs, just return empty
+  if (isDayAwarePositions(dp)) return { '1': '', '2': '', '3': '', '4': '' };
+  const sp = dp as ShiftPositions;
   return {
-    '1': dp?.['1'] ? String(dp['1']) : '',
-    '2': dp?.['2'] ? String(dp['2']) : '',
-    '3': dp?.['3'] ? String(dp['3']) : '',
+    '1': sp['1'] ? String(sp['1']) : '',
+    '2': sp['2'] ? String(sp['2']) : '',
+    '3': sp['3'] ? String(sp['3']) : '',
+    '4': sp['4'] ? String(sp['4']) : '',
   };
 }
 
@@ -123,7 +133,7 @@ export const WorkersPanel: React.FC = () => {
       <Label className="text-xs text-muted-foreground">
         Позиция в смене (по умолчанию)
       </Label>
-      <div className="grid grid-cols-3 gap-1.5">
+      <div className="grid grid-cols-4 gap-1.5">
         {SHIFTS.map(k => (
           <div key={k} className="flex items-center gap-1">
             <span className="text-xs text-muted-foreground w-3 shrink-0">{k}</span>
@@ -143,7 +153,25 @@ export const WorkersPanel: React.FC = () => {
 
   const renderShiftBadges = (dp: DefaultPositions | null) => {
     if (!dp) return null;
-    const items = SHIFTS.filter(k => dp[k]).map(k => `${k}/${dp[k]}`);
+    if (isDayAwarePositions(dp)) {
+      // Day-aware: show compact day breakdown
+      const dayEntries = DAYS_OF_WEEK
+        .filter(day => dp[day] && Object.keys(dp[day]).length > 0)
+        .map(day => {
+          const shifts = dp[day] as ShiftPositions;
+          const parts = SHIFTS.filter(k => shifts[k]).map(k => `${k}/п${shifts[k]}`);
+          return `${DAY_SHORT[day]}(${parts.join(',')})`;
+        });
+      if (dayEntries.length === 0) return null;
+      return (
+        <span className="ml-2 text-xs text-muted-foreground tabular-nums">
+          · {dayEntries.join(' ')}
+        </span>
+      );
+    }
+    // Legacy format
+    const sp = dp as ShiftPositions;
+    const items = SHIFTS.filter(k => sp[k]).map(k => `${k}/${sp[k]}`);
     if (items.length === 0) return null;
     return (
       <span className="ml-2 text-xs text-muted-foreground tabular-nums">

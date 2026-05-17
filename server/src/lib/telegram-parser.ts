@@ -74,9 +74,22 @@ export interface KneadDefaults {
   [shift: string]: string;  // shift -> most frequent worker name
 }
 
+/** Day-aware knead defaults: dayOfWeek -> shift -> worker name */
+export interface DayAwareKneadDefaults {
+  [dayOfWeek: string]: KneadDefaults;
+}
+
 export interface BakingDefaults {
   [shift: string]: { senior: string; junior: string | null };
 }
+
+/** Day-aware baking defaults: dayOfWeek -> shift -> { senior, junior } */
+export interface DayAwareBakingDefaults {
+  [dayOfWeek: string]: BakingDefaults;
+}
+
+/** Day-aware default positions: dayOfWeek -> shift -> position */
+export type DayAwareDefaultPositions = Record<string, Partial<Record<string, number>>>;
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -661,6 +674,149 @@ export function computeBakingDefaults(records: BakingRecord[]): BakingDefaults {
 
     if (bestSenior) {
       result[shift] = { senior: bestSenior, junior: bestJunior };
+    }
+  }
+
+  return result;
+}
+
+// ── Day-aware analytics ──────────────────────────────────────────────────────
+
+const ALL_DAYS = [
+  'Понедельник', 'Вторник', 'Среда', 'Четверг',
+  'Пятница', 'Суббота', 'Воскресенье',
+];
+
+/**
+ * Compute day-aware default positions for each worker.
+ * Returns: workerName -> { "Понедельник": { "1": 3, "2": 5 }, ... }
+ */
+export function computeDayAwareDefaultPositions(
+  records: WorkerShiftRecord[],
+): Map<string, DayAwareDefaultPositions> {
+  // workerName -> dayOfWeek -> shift -> position -> count
+  const statsMap = new Map<string, Map<string, Map<string, Map<number, number>>>>();
+
+  for (const r of records) {
+    if (!statsMap.has(r.workerName)) statsMap.set(r.workerName, new Map());
+    const dayMap = statsMap.get(r.workerName)!;
+    if (!dayMap.has(r.dayOfWeek)) dayMap.set(r.dayOfWeek, new Map());
+    const shiftMap = dayMap.get(r.dayOfWeek)!;
+    const shiftKey = String(r.shift);
+    if (!shiftMap.has(shiftKey)) shiftMap.set(shiftKey, new Map());
+    const posMap = shiftMap.get(shiftKey)!;
+    posMap.set(r.position, (posMap.get(r.position) || 0) + 1);
+  }
+
+  const result = new Map<string, DayAwareDefaultPositions>();
+  for (const [worker, dayMap] of statsMap) {
+    const dayDefaults: DayAwareDefaultPositions = {};
+    for (const day of ALL_DAYS) {
+      const shiftMap = dayMap.get(day);
+      if (!shiftMap) continue;
+      const shiftPositions: Partial<Record<string, number>> = {};
+      for (const [shift, posMap] of shiftMap) {
+        let bestPos = 0, bestCount = 0;
+        for (const [pos, count] of posMap) {
+          if (count > bestCount) { bestCount = count; bestPos = pos; }
+        }
+        if (bestPos > 0) shiftPositions[shift] = bestPos;
+      }
+      if (Object.keys(shiftPositions).length > 0) {
+        dayDefaults[day] = shiftPositions;
+      }
+    }
+    if (Object.keys(dayDefaults).length > 0) {
+      result.set(worker, dayDefaults);
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Compute day-aware knead defaults.
+ * Returns: { "Понедельник": { "1": "Ди", "2": "Ди" }, ... }
+ */
+export function computeDayAwareKneadDefaults(
+  schedules: ParsedSchedule[],
+): DayAwareKneadDefaults {
+  // dayOfWeek -> shift -> workerName -> count
+  const countsMap = new Map<string, Map<string, Map<string, number>>>();
+
+  for (const s of schedules) {
+    for (const block of s.blocks) {
+      if (block.isAssemblyBlock || !block.kneadWorker) continue;
+      const name = block.kneadWorker.replace(/\.$/, '').trim();
+      if (!name) continue;
+      const day = s.dayOfWeek;
+      const shift = String(block.order);
+      if (!countsMap.has(day)) countsMap.set(day, new Map());
+      const shiftMap = countsMap.get(day)!;
+      if (!shiftMap.has(shift)) shiftMap.set(shift, new Map());
+      const wMap = shiftMap.get(shift)!;
+      wMap.set(name, (wMap.get(name) || 0) + 1);
+    }
+  }
+
+  const result: DayAwareKneadDefaults = {};
+  for (const day of ALL_DAYS) {
+    const shiftMap = countsMap.get(day);
+    if (!shiftMap) continue;
+    result[day] = {};
+    for (const [shift, wMap] of shiftMap) {
+      let best = '', bestCount = 0;
+      for (const [name, count] of wMap) {
+        if (count > bestCount) { bestCount = count; best = name; }
+      }
+      if (best) result[day][shift] = best;
+    }
+  }
+
+  return result;
+}
+
+/**
+ * Compute day-aware baking defaults.
+ * Returns: { "Понедельник": { "1": { senior: "Ф", junior: "В" } }, ... }
+ */
+export function computeDayAwareBakingDefaults(
+  schedules: ParsedSchedule[],
+): DayAwareBakingDefaults {
+  // dayOfWeek -> shift -> { senior: {name: count}, junior: {name: count} }
+  const countsMap = new Map<string, Map<string, { senior: Map<string, number>; junior: Map<string, number> }>>();
+
+  for (const s of schedules) {
+    for (const block of s.blocks) {
+      if (block.isAssemblyBlock || block.bakingWorkers.length === 0) continue;
+      const day = s.dayOfWeek;
+      const shift = String(block.order);
+      if (!countsMap.has(day)) countsMap.set(day, new Map());
+      const shiftMap = countsMap.get(day)!;
+      if (!shiftMap.has(shift)) shiftMap.set(shift, { senior: new Map(), junior: new Map() });
+      const entry = shiftMap.get(shift)!;
+      entry.senior.set(block.bakingWorkers[0], (entry.senior.get(block.bakingWorkers[0]) || 0) + 1);
+      if (block.bakingWorkers.length > 1) {
+        entry.junior.set(block.bakingWorkers[1], (entry.junior.get(block.bakingWorkers[1]) || 0) + 1);
+      }
+    }
+  }
+
+  const result: DayAwareBakingDefaults = {};
+  for (const day of ALL_DAYS) {
+    const shiftMap = countsMap.get(day);
+    if (!shiftMap) continue;
+    result[day] = {};
+    for (const [shift, data] of shiftMap) {
+      let bestSenior = '', bestSeniorCount = 0;
+      for (const [name, count] of data.senior) {
+        if (count > bestSeniorCount) { bestSeniorCount = count; bestSenior = name; }
+      }
+      let bestJunior: string | null = null, bestJuniorCount = 0;
+      for (const [name, count] of data.junior) {
+        if (count > bestJuniorCount) { bestJuniorCount = count; bestJunior = name; }
+      }
+      if (bestSenior) result[day][shift] = { senior: bestSenior, junior: bestJunior };
     }
   }
 
