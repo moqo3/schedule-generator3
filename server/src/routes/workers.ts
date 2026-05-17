@@ -26,13 +26,26 @@ type Normalized = Prisma.InputJsonValue | typeof Prisma.DbNull | typeof NO_CHANG
  * positive integers. Empty/invalid entries are dropped. Returns Prisma.DbNull
  * to clear the column, or NO_CHANGE when the field was not present in input.
  */
+const DAYS_OF_WEEK = [
+  'Понедельник', 'Вторник', 'Среда', 'Четверг',
+  'Пятница', 'Суббота', 'Воскресенье',
+];
+
 function normalizeDefaultPositions(value: unknown): Normalized {
   if (value === undefined) return NO_CHANGE;
   if (value === null) return Prisma.DbNull;
   if (typeof value !== 'object') return Prisma.DbNull;
   const src = value as Record<string, unknown>;
+
+  // Day-aware format: { "Понедельник": { "1": 3 }, ... }
+  const hasDayKeys = Object.keys(src).some(k => DAYS_OF_WEEK.includes(k));
+  if (hasDayKeys) {
+    return src as Prisma.InputJsonValue;
+  }
+
+  // Legacy format: { "1": 3, "2": 5 }
   const out: Record<string, number> = {};
-  for (const shift of ['1', '2', '3']) {
+  for (const shift of ['1', '2', '3', '4']) {
     const v = src[shift];
     if (v === null || v === undefined || v === '') continue;
     const n = typeof v === 'number' ? v : parseInt(String(v), 10);
@@ -91,6 +104,11 @@ workersRouter.put('/:id', async (req: Request, res: Response) => {
 workersRouter.delete('/:id', async (req: Request, res: Response) => {
   try {
     const id = req.params.id as string;
+    const existing = await prisma.worker.findUnique({ where: { id } });
+    if (!existing) {
+      res.status(404).json({ error: 'Worker not found' });
+      return;
+    }
     await prisma.worker.delete({
       where: { id },
     });
