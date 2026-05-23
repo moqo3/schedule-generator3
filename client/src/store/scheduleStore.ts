@@ -473,6 +473,13 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     try {
       const workerOptions = await api.getWorkers();
       set({ workerOptions });
+      const { schedule } = get();
+      if (schedule.isDraft) {
+        const blocks = schedule.blocks.map(b =>
+          applyDefaultWorkers(b, workerOptions, schedule.dayOfWeek),
+        );
+        set({ schedule: { ...schedule, blocks } });
+      }
     } catch (e) {
       console.error('Failed to load workers', e);
     }
