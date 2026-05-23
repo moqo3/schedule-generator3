@@ -1,7 +1,7 @@
-import React from 'react';
+import React, { useState, useEffect } from 'react';
 import { useSortable } from '@dnd-kit/sortable';
 import { CSS } from '@dnd-kit/utilities';
-import { GripVertical, Trash2, Minus, Plus, ChevronUp, ChevronDown } from 'lucide-react';
+import { GripVertical, Trash2, Minus, Plus, ChevronUp, ChevronDown, Check } from 'lucide-react';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
@@ -10,9 +10,160 @@ import { WorkerSelect } from './WorkerSelect';
 import { WorkerMultiSelect } from './WorkerMultiSelect';
 import { TimePicker } from './TimePicker';
 import { WorkTypeSelect } from './WorkTypeSelect';
-import type { ScheduleBlock } from '@/types/schedule';
+import type { ScheduleBlock, Worker } from '@/types/schedule';
 import { getShiftDefaults, STANDARD_TIMES } from '@/types/schedule';
 import { useScheduleStore } from '@/store/scheduleStore';
+
+interface CuttingSectionProps {
+  block: ScheduleBlock;
+  cuttingDefault: string;
+  updateBlock: (blockId: string, updates: Partial<ScheduleBlock>) => void;
+  setCuttingWorkersCount: (blockId: string, count: number) => void;
+  updateWorker: (blockId: string, workerId: string, updates: Partial<Worker>) => void;
+  moveWorker: (blockId: string, workerId: string, direction: -1 | 1) => void;
+}
+
+const CuttingSection: React.FC<CuttingSectionProps> = ({
+  block,
+  cuttingDefault,
+  updateBlock,
+  setCuttingWorkersCount,
+  updateWorker,
+  moveWorker,
+}) => {
+  const [pendingCount, setPendingCount] = useState(block.cuttingWorkers.length);
+  const needsConfirm = pendingCount !== block.cuttingWorkers.length;
+
+  useEffect(() => {
+    setPendingCount(block.cuttingWorkers.length);
+  }, [block.cuttingWorkers.length]);
+
+  const handleConfirm = () => {
+    setCuttingWorkersCount(block.id, pendingCount);
+  };
+
+  return (
+    <div className="rounded-md border p-3 bg-green-50/50">
+      <Label className="text-xs font-semibold text-green-700 mb-2 block">Разделка</Label>
+      <div className="grid grid-cols-2 gap-2 mb-3">
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Начало</Label>
+          <TimePicker
+            value={block.cuttingStartTime}
+            onChange={v => updateBlock(block.id, { cuttingStartTime: v })}
+            defaultTime={cuttingDefault}
+            ariaLabel="Начало разделки"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs text-muted-foreground">Кол-во работников</Label>
+          <div className="flex items-center gap-1">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => setPendingCount(c => Math.max(0, c - 1))}
+              disabled={pendingCount === 0}
+              className="h-10 w-10 shrink-0"
+              aria-label="Уменьшить количество"
+            >
+              <Minus className="h-4 w-4" />
+            </Button>
+            <Input
+              type="number"
+              min={0}
+              max={50}
+              value={pendingCount}
+              onChange={e => {
+                const n = parseInt(e.target.value, 10);
+                setPendingCount(Number.isFinite(n) ? Math.max(0, Math.min(50, n)) : 0);
+              }}
+              className="h-10 text-base sm:text-sm text-center flex-1 min-w-0"
+              inputMode="numeric"
+            />
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              onClick={() => setPendingCount(c => Math.min(50, c + 1))}
+              className="h-10 w-10 shrink-0"
+              aria-label="Увеличить количество"
+            >
+              <Plus className="h-4 w-4" />
+            </Button>
+            <Button
+              type="button"
+              variant={needsConfirm ? 'default' : 'outline'}
+              size="icon"
+              onClick={handleConfirm}
+              disabled={!needsConfirm}
+              className={`h-10 w-10 shrink-0 ${needsConfirm ? 'bg-green-600 hover:bg-green-700 text-white' : ''}`}
+              aria-label="Подтвердить количество"
+              title="Подтвердить количество"
+            >
+              <Check className="h-4 w-4" />
+            </Button>
+          </div>
+        </div>
+      </div>
+      {block.cuttingWorkers.length === 0 ? (
+        <p className="text-xs text-muted-foreground italic">
+          Укажите количество работников и нажмите галочку — появятся ячейки для выбора.
+        </p>
+      ) : (
+        <div className="space-y-2">
+          {block.cuttingWorkers.map((worker, i) => {
+            const others = block.cuttingWorkers
+              .filter(w => w.id !== worker.id)
+              .map(w => w.name)
+              .filter(Boolean);
+            const isFirst = i === 0;
+            const isLast = i === block.cuttingWorkers.length - 1;
+            return (
+              <div key={worker.id} className="flex items-center gap-1.5">
+                <span className="text-xs text-muted-foreground w-6 text-right shrink-0 tabular-nums">
+                  {worker.position}.
+                </span>
+                <div className="flex-1 min-w-0">
+                  <WorkerSelect
+                    value={worker.name}
+                    onChange={v => updateWorker(block.id, worker.id, { name: v })}
+                    placeholder="— Выбрать —"
+                    exclude={others}
+                  />
+                </div>
+                <div className="flex flex-col shrink-0">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveWorker(block.id, worker.id, -1)}
+                    disabled={isFirst}
+                    className="h-5 w-8 disabled:opacity-30"
+                    aria-label="Вверх"
+                  >
+                    <ChevronUp className="h-4 w-4" />
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="icon"
+                    onClick={() => moveWorker(block.id, worker.id, 1)}
+                    disabled={isLast}
+                    className="h-5 w-8 disabled:opacity-30"
+                    aria-label="Вниз"
+                  >
+                    <ChevronDown className="h-4 w-4" />
+                  </Button>
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+};
 
 interface Props {
   block: ScheduleBlock;
@@ -184,113 +335,15 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
           </div>
 
           {/* Cutting Section */}
-          <div className="rounded-md border p-3 bg-green-50/50">
-            <Label className="text-xs font-semibold text-green-700 mb-2 block">Разделка</Label>
-            <div className="grid grid-cols-2 gap-2 mb-3">
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Начало</Label>
-                <TimePicker
-                  value={block.cuttingStartTime}
-                  onChange={v => updateBlock(block.id, { cuttingStartTime: v })}
-                  defaultTime={cuttingDefault}
-                  ariaLabel="Начало разделки"
-                />
-              </div>
-              <div className="space-y-1">
-                <Label className="text-xs text-muted-foreground">Кол-во работников</Label>
-                <div className="flex items-center gap-1">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setCuttingWorkersCount(block.id, block.cuttingWorkers.length - 1)}
-                    disabled={block.cuttingWorkers.length === 0}
-                    className="h-10 w-10 shrink-0"
-                    aria-label="Уменьшить количество"
-                  >
-                    <Minus className="h-4 w-4" />
-                  </Button>
-                  <Input
-                    type="number"
-                    min={0}
-                    max={50}
-                    value={block.cuttingWorkers.length}
-                    onChange={e => {
-                      const n = parseInt(e.target.value, 10);
-                      setCuttingWorkersCount(block.id, Number.isFinite(n) ? n : 0);
-                    }}
-                    className="h-10 text-base sm:text-sm text-center flex-1 min-w-0"
-                    inputMode="numeric"
-                  />
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="icon"
-                    onClick={() => setCuttingWorkersCount(block.id, block.cuttingWorkers.length + 1)}
-                    className="h-10 w-10 shrink-0"
-                    aria-label="Добавить работника"
-                  >
-                    <Plus className="h-4 w-4" />
-                  </Button>
-                </div>
-              </div>
-            </div>
-            {block.cuttingWorkers.length === 0 ? (
-              <p className="text-xs text-muted-foreground italic">
-                Укажите количество работников выше — появятся ячейки для выбора.
-              </p>
-            ) : (
-              <div className="space-y-2">
-                {block.cuttingWorkers.map((worker, i) => {
-                  const others = block.cuttingWorkers
-                    .filter(w => w.id !== worker.id)
-                    .map(w => w.name)
-                    .filter(Boolean);
-                  const isFirst = i === 0;
-                  const isLast = i === block.cuttingWorkers.length - 1;
-                  return (
-                    <div key={worker.id} className="flex items-center gap-1.5">
-                      <span className="text-xs text-muted-foreground w-6 text-right shrink-0 tabular-nums">
-                        {worker.position}.
-                      </span>
-                      <div className="flex-1 min-w-0">
-                        <WorkerSelect
-                          value={worker.name}
-                          onChange={v => updateWorker(block.id, worker.id, { name: v })}
-                          placeholder="— Выбрать —"
-                          exclude={others}
-                        />
-                      </div>
-                      <div className="flex flex-col shrink-0">
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => moveWorker(block.id, worker.id, -1)}
-                          disabled={isFirst}
-                          className="h-5 w-8 disabled:opacity-30"
-                          aria-label="Вверх"
-                        >
-                          <ChevronUp className="h-4 w-4" />
-                        </Button>
-                        <Button
-                          type="button"
-                          variant="ghost"
-                          size="icon"
-                          onClick={() => moveWorker(block.id, worker.id, 1)}
-                          disabled={isLast}
-                          className="h-5 w-8 disabled:opacity-30"
-                          aria-label="Вниз"
-                        >
-                          <ChevronDown className="h-4 w-4" />
-                        </Button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <CuttingSection
+            block={block}
+            cuttingDefault={cuttingDefault}
+            updateBlock={updateBlock}
+            setCuttingWorkersCount={setCuttingWorkersCount}
+            updateWorker={updateWorker}
+            moveWorker={moveWorker}
+          />
+
 
           {/* Baking Section */}
           <div className="rounded-md border p-3 bg-orange-50/50">
