@@ -6,100 +6,51 @@ import type {
   Template,
   WorkerOption,
   DefaultPositions,
-  ShiftPositions,
 } from '@/types/schedule';
-import { createEmptyBlock, createEmptySchedule, normalizeBlock, getPositionsForDay } from '@/types/schedule';
+import { createEmptyBlock, createEmptySchedule, normalizeBlock } from '@/types/schedule';
 import { api } from '@/lib/api';
 import { generateTelegramText } from '@/lib/telegram-generator';
+import {
+  getKneadAssignment,
+  getCuttingAssignment,
+  getBakingAssignment,
+  getAssemblyWorker,
+} from '@/lib/schedule-rules';
 
 /**
- * Pre-populate cuttingWorkers for a block based on each worker's
- * `defaultPositions[order]`. Only kicks in for shifts 1/2/3 and only when
- * the block has no cutting workers yet (so we never clobber user input).
- *
- * Workers are placed at their declared position, sorted ascending. Gaps in
- * the position numbering are preserved as empty slots so positions stay
- * stable across schedules ("ПГ всегда 3-й"). Multiple workers claiming the
- * same position fall back to alphabetical order of shortName.
+ * Pre-populate a block's workers using the rule-based algorithm.
+ * Only fills empty fields — never clobbers user input.
  */
-function applyDefaultWorkers(block: ScheduleBlock, options: WorkerOption[], dayOfWeek?: string): ScheduleBlock {
+function applyDefaultWorkers(block: ScheduleBlock, _options: WorkerOption[], dayOfWeek?: string): ScheduleBlock {
   if (block.isAssemblyBlock) return block;
-  if (block.cuttingWorkers.length > 0) return block;
-  const key = String(block.order) as '1' | '2' | '3' | '4';
+  if (!dayOfWeek || dayOfWeek === 'Суббота') return block;
 
-  // Apply cutting worker defaults (day-aware)
+  const shift = String(block.order) as '1' | '2' | '3' | '4';
+
+  // Cutting: rule-based assignment (default 5 workers)
   let cuttingWorkers = block.cuttingWorkers;
-  if (key === '1' || key === '2' || key === '3' || key === '4') {
-    const claims = options
-      .filter(o => !o.shortName.startsWith('__'))
-      .map(o => {
-        const positions = dayOfWeek
-          ? getPositionsForDay(o.defaultPositions, dayOfWeek)
-          : (o.defaultPositions as ShiftPositions | null);
-        return { option: o, pos: positions?.[key] };
-      })
-      .filter((x): x is { option: WorkerOption; pos: number } => typeof x.pos === 'number')
-      .sort((a, b) => {
-        if (a.pos !== b.pos) return a.pos - b.pos;
-        return a.option.shortName.localeCompare(b.option.shortName, 'ru');
-      });
-    if (claims.length > 0) {
-      const maxPos = claims[claims.length - 1].pos;
-      const workers: Worker[] = [];
-      let cursor = 0;
-      for (let pos = 1; pos <= maxPos; pos++) {
-        const claim = claims[cursor]?.pos === pos ? claims[cursor++] : undefined;
-        workers.push({
-          id: crypto.randomUUID(),
-          position: pos,
-          name: claim ? claim.option.shortName : '',
-        });
-      }
-      cuttingWorkers = workers;
-    }
+  if (cuttingWorkers.length === 0) {
+    const assignments = getCuttingAssignment(dayOfWeek, shift, 5);
+    cuttingWorkers = assignments.map(a => ({
+      id: crypto.randomUUID(),
+      position: a.position,
+      name: a.name,
+    }));
   }
 
-  // Apply knead worker default (day-aware)
+  // Knead: rule-based assignment
   let kneadWorker = block.kneadWorker;
   if (!kneadWorker) {
-    const kneadRecord = options.find(o => o.shortName === '__knead_defaults__');
-    if (kneadRecord?.defaultPositions) {
-      const kneadRaw = kneadRecord.defaultPositions as unknown as Record<string, unknown>;
-      // Day-aware: { "Понедельник": { "1": "Ди" }, ... } or legacy: { "1": "Ди" }
-      let kneadForShift: string | undefined;
-      if (dayOfWeek && kneadRaw[dayOfWeek] && typeof kneadRaw[dayOfWeek] === 'object') {
-        kneadForShift = (kneadRaw[dayOfWeek] as Record<string, string>)[key];
-      }
-      if (!kneadForShift && typeof kneadRaw[key] === 'string') {
-        kneadForShift = kneadRaw[key] as string;
-      }
-      if (kneadForShift) {
-        kneadWorker = kneadForShift;
-      }
-    }
+    kneadWorker = getKneadAssignment(dayOfWeek, shift);
   }
 
-  // Apply baking workers default (day-aware, senior + junior)
+  // Baking: rule-based pair assignment
   let bakingWorkers = block.bakingWorkers;
   if (bakingWorkers.length === 0) {
-    const bakingRecord = options.find(o => o.shortName === '__baking_defaults__');
-    if (bakingRecord?.defaultPositions) {
-      const bakingRaw = bakingRecord.defaultPositions as unknown as Record<string, unknown>;
-      let shiftBaking: { senior: string; junior: string | null } | undefined;
-      // Day-aware format
-      if (dayOfWeek && bakingRaw[dayOfWeek] && typeof bakingRaw[dayOfWeek] === 'object') {
-        shiftBaking = (bakingRaw[dayOfWeek] as Record<string, { senior: string; junior: string | null }>)[key];
-      }
-      // Legacy fallback
-      if (!shiftBaking && bakingRaw[key] && typeof bakingRaw[key] === 'object') {
-        shiftBaking = bakingRaw[key] as { senior: string; junior: string | null };
-      }
-      if (shiftBaking) {
-        bakingWorkers = [shiftBaking.senior];
-        if (shiftBaking.junior) {
-          bakingWorkers.push(shiftBaking.junior);
-        }
-      }
+    const baking = getBakingAssignment(dayOfWeek, shift);
+    if (baking) {
+      bakingWorkers = [baking.senior];
+      if (baking.junior) bakingWorkers.push(baking.junior);
     }
   }
 
@@ -218,6 +169,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       ...createEmptyBlock(newOrder),
       title: 'Сборка',
       isAssemblyBlock: true,
+      assemblyWorker: getAssemblyWorker(schedule.dayOfWeek),
     };
     const updated = {
       ...schedule,
