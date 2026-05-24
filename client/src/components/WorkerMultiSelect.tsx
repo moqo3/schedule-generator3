@@ -3,6 +3,13 @@ import { X } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { useScheduleStore } from '@/store/scheduleStore';
 
+function priorityMarker(score: number): string {
+  if (score >= 80) return '🟢 ';
+  if (score >= 50) return '🟡 ';
+  if (score >= 20) return '⚪ ';
+  return '';
+}
+
 interface Props {
   values: string[];
   onChange: (next: string[]) => void;
@@ -70,12 +77,15 @@ export const WorkerMultiSelect: React.FC<Props> = ({ values, onChange, placehold
         className="flex h-10 w-full rounded-md border border-input bg-background px-2 text-base sm:text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
       >
         <option value="">+ Добавить работника…</option>
-        {sorted.map(w => (
-          <option key={w.id} value={w.shortName}>
-            {w.shortName}
-            {w.name && w.name !== w.shortName ? ` — ${w.name}` : ''}
-          </option>
-        ))}
+        {sorted.map(w => {
+          const marker = priorityFn ? priorityMarker(priorityFn(w.shortName)) : '';
+          return (
+            <option key={w.id} value={w.shortName}>
+              {marker}{w.shortName}
+              {w.name && w.name !== w.shortName ? ` — ${w.name}` : ''}
+            </option>
+          );
+        })}
       </select>
     </div>
   );

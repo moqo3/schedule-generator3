@@ -1,6 +1,13 @@
 import React from 'react';
 import { useScheduleStore } from '@/store/scheduleStore';
 
+function priorityMarker(score: number): string {
+  if (score >= 80) return '🟢 ';
+  if (score >= 50) return '🟡 ';
+  if (score >= 20) return '⚪ ';
+  return '';
+}
+
 interface Props {
   value: string;
   onChange: (next: string) => void;
@@ -43,12 +50,15 @@ export const WorkerSelect: React.FC<Props> = ({ value, onChange, placeholder, cl
       {!valueIsKnown && value && (
         <option value={value}>{value} (нет в списке)</option>
       )}
-      {filtered.map(w => (
-        <option key={w.id} value={w.shortName}>
-          {w.shortName}
-          {w.name && w.name !== w.shortName ? ` — ${w.name}` : ''}
-        </option>
-      ))}
+      {filtered.map(w => {
+        const marker = priorityFn ? priorityMarker(priorityFn(w.shortName)) : '';
+        return (
+          <option key={w.id} value={w.shortName}>
+            {marker}{w.shortName}
+            {w.name && w.name !== w.shortName ? ` — ${w.name}` : ''}
+          </option>
+        );
+      })}
     </select>
   );
 };

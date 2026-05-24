@@ -59,6 +59,8 @@ function applyDefaultWorkers(block: ScheduleBlock, _options: WorkerOption[], day
 
 export type ActiveTab = 'editor' | 'preview' | 'history' | 'templates' | 'workers' | 'import';
 
+const MAX_UNDO = 50;
+
 interface ScheduleState {
   schedule: Schedule;
   schedules: Schedule[];
@@ -68,6 +70,8 @@ interface ScheduleState {
   isSaving: boolean;
   lastSaved: string | null;
   activeTab: ActiveTab;
+  undoStack: Schedule[];
+  redoStack: Schedule[];
 
   setSchedule: (schedule: Schedule) => void;
   setActiveTab: (tab: ActiveTab) => void;
@@ -95,6 +99,7 @@ interface ScheduleState {
   loadSchedule: (id: string) => Promise<void>;
   deleteSchedule: (id: string) => Promise<void>;
   newSchedule: () => void;
+  duplicateSchedule: () => void;
 
   loadTemplates: () => Promise<void>;
   saveAsTemplate: (name: string) => Promise<void>;
@@ -120,12 +125,21 @@ interface ScheduleState {
   deleteWorkerOption: (id: string) => Promise<void>;
 
   triggerAutosave: () => void;
+  pushUndo: () => void;
+  undo: () => void;
+  redo: () => void;
+  canUndo: boolean;
+  canRedo: boolean;
 }
 
 let autosaveTimer: ReturnType<typeof setTimeout> | null = null;
 
 export const useScheduleStore = create<ScheduleState>((set, get) => ({
   schedule: createEmptySchedule(),
+  undoStack: [],
+  redoStack: [],
+  canUndo: false,
+  canRedo: false,
   schedules: [],
   templates: [],
   workerOptions: [],
@@ -144,6 +158,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   updateDayOfWeek: (day) => {
+    get().pushUndo();
     const { schedule, workerOptions } = get();
     const blocks = schedule.blocks.map(b => {
       const empty = createEmptyBlock(b.order);
@@ -160,6 +175,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   addBlock: () => {
+    get().pushUndo();
     const { schedule, workerOptions } = get();
     const newOrder = schedule.blocks.length + 1;
     const newBlock = applyDefaultWorkers(createEmptyBlock(newOrder), workerOptions, schedule.dayOfWeek);
@@ -173,6 +189,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   addAssemblyBlock: () => {
+    get().pushUndo();
     const { schedule } = get();
     const newOrder = schedule.blocks.length + 1;
     const newBlock: ScheduleBlock = {
@@ -191,6 +208,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   removeBlock: (blockId) => {
+    get().pushUndo();
     const { schedule } = get();
     const blocks = schedule.blocks
       .filter(b => b.id !== blockId)
@@ -200,6 +218,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   updateBlock: (blockId, updates) => {
+    get().pushUndo();
     const { schedule } = get();
     const blocks = schedule.blocks.map(b =>
       b.id === blockId ? { ...b, ...updates } : b
@@ -209,6 +228,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   reorderBlocks: (fromIndex, toIndex) => {
+    get().pushUndo();
     const { schedule } = get();
     const blocks = [...schedule.blocks];
     const [moved] = blocks.splice(fromIndex, 1);
@@ -248,6 +268,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   updateWorker: (blockId, workerId, updates) => {
+    get().pushUndo();
     const { schedule } = get();
     const blocks = schedule.blocks.map(b => {
       if (b.id !== blockId) return b;
@@ -261,6 +282,7 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   setCuttingWorkersCount: (blockId, count) => {
+    get().pushUndo();
     const { schedule } = get();
     const safeCount = Math.max(0, Math.min(50, Math.floor(count)));
     const blocks = schedule.blocks.map(b => {
@@ -401,6 +423,31 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     set({ schedule: { ...fresh, blocks }, generatedText: '', lastSaved: null });
   },
 
+  duplicateSchedule: () => {
+    const { schedule } = get();
+    const d = new Date(schedule.date + 'T00:00:00');
+    d.setDate(d.getDate() + 7);
+    const nextDate = d.toISOString().slice(0, 10);
+    const blocks = schedule.blocks.map(b => ({
+      ...b,
+      id: crypto.randomUUID(),
+      cuttingWorkers: b.cuttingWorkers.map(w => ({ ...w, id: crypto.randomUUID() })),
+    }));
+    set({
+      schedule: {
+        ...schedule,
+        id: crypto.randomUUID(),
+        date: nextDate,
+        blocks,
+        isDraft: true,
+        createdAt: new Date().toISOString(),
+        updatedAt: new Date().toISOString(),
+      },
+      generatedText: '',
+      lastSaved: null,
+    });
+  },
+
   loadTemplates: async () => {
     try {
       const templates = await api.getTemplates();
@@ -495,5 +542,41 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
         set({ isSaving: false });
       }
     }, 2000);
+  },
+
+  pushUndo: () => {
+    const { schedule, undoStack } = get();
+    const next = [...undoStack, structuredClone(schedule)].slice(-MAX_UNDO);
+    set({ undoStack: next, redoStack: [], canUndo: true, canRedo: false });
+  },
+
+  undo: () => {
+    const { undoStack, schedule, redoStack } = get();
+    if (undoStack.length === 0) return;
+    const prev = undoStack[undoStack.length - 1];
+    const newUndo = undoStack.slice(0, -1);
+    const newRedo = [...redoStack, structuredClone(schedule)];
+    set({
+      schedule: prev,
+      undoStack: newUndo,
+      redoStack: newRedo,
+      canUndo: newUndo.length > 0,
+      canRedo: true,
+    });
+  },
+
+  redo: () => {
+    const { redoStack, schedule, undoStack } = get();
+    if (redoStack.length === 0) return;
+    const next = redoStack[redoStack.length - 1];
+    const newRedo = redoStack.slice(0, -1);
+    const newUndo = [...undoStack, structuredClone(schedule)];
+    set({
+      schedule: next,
+      undoStack: newUndo,
+      redoStack: newRedo,
+      canUndo: true,
+      canRedo: newRedo.length > 0,
+    });
   },
 }));

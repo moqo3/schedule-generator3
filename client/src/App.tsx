@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Copy, Check, Download, Save, FilePlus, RefreshCw, LogOut, CalendarDays } from 'lucide-react';
+import { Copy, Check, Download, Save, FilePlus, RefreshCw, LogOut, CalendarDays, CopyPlus, Undo2, Redo2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { TooltipProvider } from '@/components/ui/tooltip';
@@ -27,6 +27,11 @@ const App: React.FC = () => {
     exportTxt,
     saveSchedule,
     newSchedule,
+    duplicateSchedule,
+    undo,
+    redo,
+    canUndo,
+    canRedo,
     loadSchedules,
     loadTemplates,
     loadWorkerOptions,
@@ -57,10 +62,18 @@ const App: React.FC = () => {
         e.preventDefault();
         newSchedule();
       }
+      if (e.ctrlKey && e.key === 'z' && !e.shiftKey) {
+        e.preventDefault();
+        undo();
+      }
+      if (e.ctrlKey && e.shiftKey && e.key === 'Z') {
+        e.preventDefault();
+        redo();
+      }
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [status, generateText, setActiveTab, saveSchedule, newSchedule]);
+  }, [status, generateText, setActiveTab, saveSchedule, newSchedule, undo, redo]);
 
   const handleCopy = async () => {
     if (!generatedText) generateText();
@@ -121,6 +134,26 @@ const App: React.FC = () => {
 
             <div className="flex items-center gap-2 -mx-3 sm:mx-0 px-3 sm:px-0 overflow-x-auto pb-1">
               <Button
+                onClick={undo}
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0"
+                disabled={!canUndo}
+                title="Отменить (Ctrl+Z)"
+              >
+                <Undo2 className="h-4 w-4" />
+              </Button>
+              <Button
+                onClick={redo}
+                variant="outline"
+                size="icon"
+                className="h-10 w-10 shrink-0"
+                disabled={!canRedo}
+                title="Вернуть (Ctrl+Shift+Z)"
+              >
+                <Redo2 className="h-4 w-4" />
+              </Button>
+              <Button
                 onClick={() => { generateText(); setActiveTab('preview'); }}
                 variant="default"
                 size="sm"
@@ -171,6 +204,16 @@ const App: React.FC = () => {
               >
                 <FilePlus className="h-4 w-4 sm:mr-1.5" />
                 <span className="hidden sm:inline">Новое</span>
+              </Button>
+              <Button
+                onClick={duplicateSchedule}
+                variant="outline"
+                size="sm"
+                className="h-10 px-3 shrink-0"
+                title="Дублировать на следующую неделю"
+              >
+                <CopyPlus className="h-4 w-4 sm:mr-1.5" />
+                <span className="hidden sm:inline">Дубл.</span>
               </Button>
             </div>
           </div>
@@ -228,7 +271,7 @@ const App: React.FC = () => {
 
         {/* Keyboard shortcuts hint (desktop only) */}
         <footer className="hidden md:block fixed bottom-0 left-0 right-0 bg-white border-t py-1 px-4 text-xs text-muted-foreground text-center">
-          Ctrl+B — добавить блок · Ctrl+M — сборка · Ctrl+G — сгенерировать · Ctrl+S — сохранить · Ctrl+N — новое расписание
+          Ctrl+Z — отменить · Ctrl+Shift+Z — вернуть · Ctrl+B — блок · Ctrl+M — сборка · Ctrl+G — сгенерировать · Ctrl+S — сохранить · Ctrl+N — новое
         </footer>
       </div>
     </TooltipProvider>
