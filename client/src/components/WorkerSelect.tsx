@@ -7,14 +7,23 @@ interface Props {
   placeholder?: string;
   className?: string;
   exclude?: string[];
+  /** When provided, workers are sorted by this function (desc) instead of alphabetically. */
+  priorityFn?: (shortName: string) => number;
 }
 
-export const WorkerSelect: React.FC<Props> = ({ value, onChange, placeholder, className, exclude }) => {
+export const WorkerSelect: React.FC<Props> = ({ value, onChange, placeholder, className, exclude, priorityFn }) => {
   const workerOptions = useScheduleStore(s => s.workerOptions);
 
-  const sorted = [...workerOptions]
-    .filter(w => !w.shortName.startsWith('__'))
-    .sort((a, b) => a.shortName.localeCompare(b.shortName, 'ru'));
+  const visible = [...workerOptions].filter(w => !w.shortName.startsWith('__'));
+
+  const sorted = priorityFn
+    ? visible.sort((a, b) => {
+        const pa = priorityFn(a.shortName);
+        const pb = priorityFn(b.shortName);
+        if (pa !== pb) return pb - pa;
+        return a.shortName.localeCompare(b.shortName, 'ru');
+      })
+    : visible.sort((a, b) => a.shortName.localeCompare(b.shortName, 'ru'));
 
   const excludeSet = new Set(exclude ?? []);
   const filtered = sorted.filter(w => w.shortName === value || !excludeSet.has(w.shortName));

@@ -13,6 +13,7 @@ import { WorkTypeSelect } from './WorkTypeSelect';
 import type { ScheduleBlock, Worker } from '@/types/schedule';
 import { getShiftDefaults, STANDARD_TIMES } from '@/types/schedule';
 import { useScheduleStore } from '@/store/scheduleStore';
+import { getWorkerPriority, type SectionType } from '@/lib/schedule-rules';
 
 interface CuttingSectionProps {
   block: ScheduleBlock;
@@ -21,6 +22,7 @@ interface CuttingSectionProps {
   setCuttingWorkersCount: (blockId: string, count: number) => void;
   updateWorker: (blockId: string, workerId: string, updates: Partial<Worker>) => void;
   moveWorker: (blockId: string, workerId: string, direction: -1 | 1) => void;
+  priorityFn?: (shortName: string) => number;
 }
 
 const CuttingSection: React.FC<CuttingSectionProps> = ({
@@ -30,6 +32,7 @@ const CuttingSection: React.FC<CuttingSectionProps> = ({
   setCuttingWorkersCount,
   updateWorker,
   moveWorker,
+  priorityFn,
 }) => {
   const [pendingCount, setPendingCount] = useState(block.cuttingWorkers.length);
   const needsConfirm = pendingCount !== block.cuttingWorkers.length;
@@ -130,6 +133,7 @@ const CuttingSection: React.FC<CuttingSectionProps> = ({
                     onChange={v => updateWorker(block.id, worker.id, { name: v })}
                     placeholder="— Выбрать —"
                     exclude={others}
+                    priorityFn={priorityFn}
                   />
                 </div>
                 <div className="flex flex-col shrink-0">
@@ -171,6 +175,7 @@ interface Props {
 
 export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
   const {
+    schedule,
     updateBlock,
     removeBlock,
     updateWorker,
@@ -182,6 +187,11 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
   const kneadDefault = shiftDefaults.kneadTime || STANDARD_TIMES.kneadTime;
   const cuttingDefault = shiftDefaults.cuttingStartTime || STANDARD_TIMES.cuttingStartTime;
   const bakingDefault = shiftDefaults.bakingTime || STANDARD_TIMES.bakingTime;
+
+  const day = schedule.dayOfWeek;
+  const shift = String(block.order) as '1' | '2' | '3' | '4';
+  const makePriorityFn = (section: SectionType) =>
+    (name: string) => getWorkerPriority(section, name, day, shift);
 
   const {
     attributes,
@@ -329,6 +339,7 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
                   value={block.kneadWorker}
                   onChange={v => updateBlock(block.id, { kneadWorker: v })}
                   placeholder="—"
+                  priorityFn={makePriorityFn('knead')}
                 />
               </div>
             </div>
@@ -342,6 +353,7 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
             setCuttingWorkersCount={setCuttingWorkersCount}
             updateWorker={updateWorker}
             moveWorker={moveWorker}
+            priorityFn={makePriorityFn('cutting')}
           />
 
 
@@ -364,6 +376,7 @@ export const ScheduleBlockCard: React.FC<Props> = ({ block }) => {
                   values={block.bakingWorkers}
                   onChange={v => updateBlock(block.id, { bakingWorkers: v })}
                   placeholder="Никого не выбрано"
+                  priorityFn={makePriorityFn('baking')}
                 />
               </div>
             </div>

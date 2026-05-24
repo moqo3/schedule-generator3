@@ -272,9 +272,16 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
       } else if (safeCount < current.length) {
         next = current.slice(0, safeCount).map((w, i) => ({ ...w, position: i + 1 }));
       } else {
+        const shift = String(b.order) as '1' | '2' | '3' | '4';
+        const fullAssignment = getCuttingAssignment(schedule.dayOfWeek, shift, safeCount);
+        const usedNames = new Set(current.map(w => w.name).filter(Boolean));
         const extras: Worker[] = [];
         for (let i = current.length; i < safeCount; i++) {
-          extras.push({ id: crypto.randomUUID(), position: i + 1, name: '' });
+          const pos = i + 1;
+          const suggested = fullAssignment.find(a => a.position === pos && !usedNames.has(a.name));
+          const name = suggested?.name ?? '';
+          if (name) usedNames.add(name);
+          extras.push({ id: crypto.randomUUID(), position: pos, name });
         }
         next = [...current, ...extras];
       }

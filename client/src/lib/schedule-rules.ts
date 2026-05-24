@@ -346,3 +346,45 @@ export function shouldHaveAssembly(day: string): boolean {
 export function getAssemblyWorker(day: string): string {
   return ASSEMBLY_WORKERS[day] ?? '';
 }
+
+// ──────────────────────────────────────────────────────────────
+// Priority sorting for worker dropdowns
+// ──────────────────────────────────────────────────────────────
+
+export type SectionType = 'knead' | 'cutting' | 'baking';
+
+/**
+ * Returns a priority score (higher = better fit) for a worker in a given
+ * section / day / shift context. Used to sort dropdown options.
+ */
+export function getWorkerPriority(
+  section: SectionType,
+  worker: string,
+  day: string,
+  shift: ShiftKey,
+): number {
+  if (day === 'Суббота') return 0;
+
+  if (section === 'knead') {
+    if (!isAvailableForKnead(worker, day)) return 0;
+    const kw = KNEAD_WEIGHTS[worker];
+    if (!kw) return 0;
+    return W[kw[shift] ?? 'NEVER'];
+  }
+
+  if (section === 'cutting') {
+    if (!isAvailableForCutting(worker, day)) return 0;
+    return getCuttingShiftWeight(worker, shift);
+  }
+
+  if (section === 'baking') {
+    if (!isAvailableForBaking(worker, day)) return 0;
+    const bw = BAKING_WEIGHTS[worker];
+    if (!bw) return 0;
+    const shiftScore = W[bw.shifts[shift] ?? 'NEVER'];
+    const roleScore = Math.max(W[bw.senior], W[bw.junior]);
+    return shiftScore * roleScore;
+  }
+
+  return 0;
+}

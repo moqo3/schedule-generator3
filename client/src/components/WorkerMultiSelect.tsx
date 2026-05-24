@@ -7,14 +7,23 @@ interface Props {
   values: string[];
   onChange: (next: string[]) => void;
   placeholder?: string;
+  /** When provided, workers are sorted by this function (desc) instead of alphabetically. */
+  priorityFn?: (shortName: string) => number;
 }
 
-export const WorkerMultiSelect: React.FC<Props> = ({ values, onChange, placeholder }) => {
+export const WorkerMultiSelect: React.FC<Props> = ({ values, onChange, placeholder, priorityFn }) => {
   const workerOptions = useScheduleStore(s => s.workerOptions);
 
-  const sorted = [...workerOptions]
-    .filter(w => !w.shortName.startsWith('__'))
-    .sort((a, b) => a.shortName.localeCompare(b.shortName, 'ru'));
+  const visible = [...workerOptions].filter(w => !w.shortName.startsWith('__'));
+
+  const sorted = priorityFn
+    ? visible.sort((a, b) => {
+        const pa = priorityFn(a.shortName);
+        const pb = priorityFn(b.shortName);
+        if (pa !== pb) return pb - pa;
+        return a.shortName.localeCompare(b.shortName, 'ru');
+      })
+    : visible.sort((a, b) => a.shortName.localeCompare(b.shortName, 'ru'));
 
   const remove = (idx: number) => {
     const next = values.slice();
