@@ -57,11 +57,11 @@ export function snapTo15(t: ParsedTime): ParsedTime {
   };
 }
 
-export const TIME_OFFSETS = [-30, -15, 0, 15, 30, 45, 60] as const;
+export const TIME_OFFSETS = [-60, -45, -30, -15, 0, 15, 30, 45, 60] as const;
 
 /**
- * Generate the 7 quick-pick options around a base time:
- * base − 30, − 15, 0, + 15, + 30, + 45, + 60 minutes.
+ * Generate quick-pick options around a base time:
+ * base −60 … +60 minutes in 15-min steps.
  */
 export function buildTimeOptions(baseTime: string): string[] {
   const parsed = parseTime(baseTime);
