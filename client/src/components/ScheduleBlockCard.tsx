@@ -48,7 +48,7 @@ const CuttingSection: React.FC<CuttingSectionProps> = ({
   return (
     <div className="rounded-md border p-3 bg-green-50/50">
       <Label className="text-xs font-semibold text-green-700 mb-2 block">Разделка</Label>
-      <div className="grid grid-cols-2 gap-2 mb-3">
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 mb-3">
         <div className="space-y-1">
           <Label className="text-xs text-muted-foreground">Начало</Label>
           <TimePicker
@@ -81,7 +81,7 @@ const CuttingSection: React.FC<CuttingSectionProps> = ({
                 const n = parseInt(e.target.value, 10);
                 setPendingCount(Number.isFinite(n) ? Math.max(0, Math.min(50, n)) : 0);
               }}
-              className="h-10 text-base sm:text-sm text-center flex-1 min-w-0"
+              className="h-10 text-base sm:text-sm text-center flex-1 min-w-[3rem]"
               inputMode="numeric"
             />
             <Button
