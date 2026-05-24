@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useCallback } from 'react';
 import {
   DndContext,
   closestCenter,
@@ -13,7 +13,7 @@ import {
   sortableKeyboardCoordinates,
   verticalListSortingStrategy,
 } from '@dnd-kit/sortable';
-import { Plus, Package, CalendarDays } from 'lucide-react';
+import { Plus, Package, CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -28,6 +28,20 @@ function dayOfWeekFromDate(date: string): string {
   if (Number.isNaN(d.getTime())) return '';
   const raw = RU_WEEKDAY_FORMATTER.format(d);
   return raw.charAt(0).toUpperCase() + raw.slice(1);
+}
+
+function shiftDate(date: string, days: number): string {
+  const d = new Date(date + 'T00:00:00');
+  d.setDate(d.getDate() + days);
+  return d.toISOString().slice(0, 10);
+}
+
+function nextWorkday(date: string, direction: 1 | -1): string {
+  let next = shiftDate(date, direction);
+  // Skip Saturday (day 6)
+  const d = new Date(next + 'T00:00:00');
+  if (d.getDay() === 6) next = shiftDate(next, direction);
+  return next;
 }
 
 export const ScheduleEditor: React.FC = () => {
@@ -48,6 +62,13 @@ export const ScheduleEditor: React.FC = () => {
       updateDayOfWeek(computedDayOfWeek);
     }
   }, [computedDayOfWeek, schedule.dayOfWeek, updateDayOfWeek]);
+
+  const navigateDay = useCallback((direction: 1 | -1) => {
+    const next = nextWorkday(schedule.date, direction);
+    updateDate(next);
+    const dow = dayOfWeekFromDate(next);
+    if (dow) updateDayOfWeek(dow);
+  }, [schedule.date, updateDate, updateDayOfWeek]);
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -81,7 +102,17 @@ export const ScheduleEditor: React.FC = () => {
   return (
     <div className="space-y-3 sm:space-y-4">
       {/* Date & Day Header */}
-      <div className="grid grid-cols-1 sm:grid-cols-[auto_1fr] sm:items-end gap-3 p-3 sm:p-4 rounded-lg bg-muted/50 border">
+      <div className="flex items-end gap-2 sm:gap-3 p-3 sm:p-4 rounded-lg bg-muted/50 border flex-wrap">
+        <Button
+          onClick={() => navigateDay(-1)}
+          variant="outline"
+          size="icon"
+          className="h-11 sm:h-10 w-11 sm:w-10 shrink-0"
+          aria-label="Предыдущий день"
+          title="Предыдущий день"
+        >
+          <ChevronLeft className="h-5 w-5" />
+        </Button>
         <div className="space-y-1.5">
           <Label htmlFor="schedule-date" className="text-xs text-muted-foreground">Дата</Label>
           <Input
@@ -108,6 +139,16 @@ export const ScheduleEditor: React.FC = () => {
             </span>
           </div>
         </div>
+        <Button
+          onClick={() => navigateDay(1)}
+          variant="outline"
+          size="icon"
+          className="h-11 sm:h-10 w-11 sm:w-10 shrink-0"
+          aria-label="Следующий день"
+          title="Следующий день"
+        >
+          <ChevronRight className="h-5 w-5" />
+        </Button>
       </div>
 
       {/* Blocks */}
