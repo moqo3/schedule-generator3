@@ -144,8 +144,18 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
   },
 
   updateDayOfWeek: (day) => {
-    const schedule = { ...get().schedule, dayOfWeek: day, updatedAt: new Date().toISOString() };
-    set({ schedule });
+    const { schedule, workerOptions } = get();
+    const blocks = schedule.blocks.map(b => {
+      const empty = createEmptyBlock(b.order);
+      const reset: ScheduleBlock = {
+        ...b,
+        kneadWorker: empty.kneadWorker,
+        cuttingWorkers: empty.cuttingWorkers,
+        bakingWorkers: empty.bakingWorkers,
+      };
+      return applyDefaultWorkers(reset, workerOptions, day);
+    });
+    set({ schedule: { ...schedule, dayOfWeek: day, blocks, updatedAt: new Date().toISOString() } });
     get().triggerAutosave();
   },
 
