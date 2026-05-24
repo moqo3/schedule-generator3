@@ -113,8 +113,9 @@ export interface ShiftDefaults {
 
 const SHIFT_DEFAULTS: Record<number, ShiftDefaults> = {
   1: { kneadTime: '06:10', cuttingStartTime: '08:00', bakingTime: '10:45', assemblyTime: '14:30' },
-  2: { kneadTime: '10:30', cuttingStartTime: '12:00', bakingTime: '',      assemblyTime: '14:30' },
-  3: { kneadTime: '15:00', cuttingStartTime: '16:30', bakingTime: '',      assemblyTime: '14:30' },
+  2: { kneadTime: '10:30', cuttingStartTime: '12:00', bakingTime: '15:00', assemblyTime: '14:30' },
+  3: { kneadTime: '15:00', cuttingStartTime: '16:30', bakingTime: '19:30', assemblyTime: '14:30' },
+  4: { kneadTime: '18:00', cuttingStartTime: '19:30', bakingTime: '22:30', assemblyTime: '14:30' },
 };
 
 const FALLBACK_DEFAULTS: ShiftDefaults = {
