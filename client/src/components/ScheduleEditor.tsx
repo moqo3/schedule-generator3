@@ -33,7 +33,10 @@ function dayOfWeekFromDate(date: string): string {
 function shiftDate(date: string, days: number): string {
   const d = new Date(date + 'T00:00:00');
   d.setDate(d.getDate() + days);
-  return d.toISOString().slice(0, 10);
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${y}-${m}-${dd}`;
 }
 
 function nextWorkday(date: string, direction: 1 | -1): string {
