@@ -8,6 +8,10 @@
  *   LOW (20)   — rare / occasional
  *   NEVER (0)  — forbidden
  *
+ * Cumulative stats from imported schedules are used as a tiebreaker:
+ *   When two workers share the same hardcoded weight, the one with
+ *   higher frequency in real data wins.
+ *
  * Rules implemented:
  *   1. Saturday = off for everyone; Sunday = Ди, Ф off (ПГ baking-only)
  *   2. Mon–Fri shift 1: Ди knead + pos 1, Ф senior baker
@@ -15,6 +19,8 @@
  *   4. Stable baking pairs per shift
  *   5. Assembly on Пн/Ср/Вс with priority workers
  */
+
+import type { CumulativeStats } from './api';
 
 type Weight = 'MUST' | 'HIGH' | 'MEDIUM' | 'LOW' | 'NEVER';
 
@@ -27,6 +33,57 @@ const W: Record<Weight, number> = {
 };
 
 type ShiftKey = '1' | '2' | '3' | '4';
+
+// Module-level stats cache, loaded once on app start
+let _stats: CumulativeStats | null = null;
+
+export function setStats(stats: CumulativeStats): void {
+  _stats = stats;
+}
+
+export function getStats(): CumulativeStats | null {
+  return _stats;
+}
+
+/**
+ * Get a stat-based bonus (0–9) for tiebreaking.
+ * Looks up how many times this worker appeared on this shift in imported data.
+ * Returns 0 if no stats loaded.
+ */
+function statBonus(
+  section: 'cutting' | 'knead' | 'baking',
+  worker: string,
+  shift: ShiftKey,
+  position?: number,
+): number {
+  if (!_stats) return 0;
+  if (section === 'cutting') {
+    const wData = _stats.cutting[worker];
+    if (!wData) return 0;
+    const shiftData = wData[shift];
+    if (!shiftData) return 0;
+    if (position !== undefined) {
+      return Math.min(shiftData[String(position)] || 0, 9);
+    }
+    // Total across all positions for this shift
+    let total = 0;
+    for (const v of Object.values(shiftData)) total += v;
+    return Math.min(total, 9);
+  }
+  if (section === 'knead') {
+    const wData = _stats.knead[worker];
+    if (!wData) return 0;
+    return Math.min(wData[shift] || 0, 9);
+  }
+  if (section === 'baking') {
+    const wData = _stats.baking[worker];
+    if (!wData) return 0;
+    const s = wData.senior[shift] || 0;
+    const j = wData.junior[shift] || 0;
+    return Math.min(s + j, 9);
+  }
+  return 0;
+}
 
 // ──────────────────────────────────────────────────────────────
 // Rule 1 — Availability
@@ -77,7 +134,7 @@ export function getKneadAssignment(day: string, shift: ShiftKey): string {
   // Rule 2: Mon–Fri shift 1 → Ди
   if (shift === '1') return 'Ди';
 
-  // General: highest-weight available worker
+  // General: highest-weight available worker (stat bonus as tiebreaker)
   let best = '';
   let bestScore = 0;
   for (const [worker, shifts] of Object.entries(KNEAD_WEIGHTS)) {
@@ -85,6 +142,8 @@ export function getKneadAssignment(day: string, shift: ShiftKey): string {
     let score = W[shifts[shift] ?? 'NEVER'];
     // Е on knead shift 2 only on Среда
     if (worker === 'Е' && shift === '2' && day !== 'Среда') score = 0;
+    // Add stat bonus as fractional tiebreaker (never changes weight tier)
+    score = score * 10 + statBonus('knead', worker, shift);
     if (score > bestScore) {
       bestScore = score;
       best = worker;
@@ -194,15 +253,18 @@ export function getCuttingAssignment(
     if (shiftW <= 0) continue;
 
     for (let pos = 2; pos <= count; pos++) {
+      const baseScore = shiftW * getPositionFactor(worker, pos);
+      // Add stat bonus as fractional tiebreaker
+      const bonus = statBonus('cutting', worker, shift, pos);
       candidates.push({
         worker,
         position: pos,
-        score: shiftW * getPositionFactor(worker, pos),
+        score: baseScore * 10 + bonus,
       });
     }
   }
 
-  // Sort by score desc, tiebreak by matrix declaration order
+  // Sort by score desc, tiebreak by stat frequency then matrix order
   candidates.sort((a, b) => {
     if (a.score !== b.score) return b.score - a.score;
     return matrixOrder.indexOf(a.worker) - matrixOrder.indexOf(b.worker);
@@ -268,11 +330,15 @@ function computeBestPair(
 ): { senior: string; junior: string } | null {
   const available = Object.entries(BAKING_WEIGHTS)
     .filter(([name]) => isAvailableForBaking(name, day))
-    .map(([name, data]) => ({
-      name,
-      seniorScore: W[data.senior] * W[data.shifts[shift] ?? 'NEVER'],
-      juniorScore: W[data.junior] * W[data.shifts[shift] ?? 'NEVER'],
-    }));
+    .map(([name, data]) => {
+      const base = W[data.shifts[shift] ?? 'NEVER'];
+      const bonus = statBonus('baking', name, shift);
+      return {
+        name,
+        seniorScore: W[data.senior] * base * 10 + bonus,
+        juniorScore: W[data.junior] * base * 10 + bonus,
+      };
+    });
 
   let bestSenior = '';
   let bestSeniorScore = 0;
@@ -369,12 +435,12 @@ export function getWorkerPriority(
     if (!isAvailableForKnead(worker, day)) return 0;
     const kw = KNEAD_WEIGHTS[worker];
     if (!kw) return 0;
-    return W[kw[shift] ?? 'NEVER'];
+    return W[kw[shift] ?? 'NEVER'] * 10 + statBonus('knead', worker, shift);
   }
 
   if (section === 'cutting') {
     if (!isAvailableForCutting(worker, day)) return 0;
-    return getCuttingShiftWeight(worker, shift);
+    return getCuttingShiftWeight(worker, shift) * 10 + statBonus('cutting', worker, shift);
   }
 
   if (section === 'baking') {
@@ -383,7 +449,7 @@ export function getWorkerPriority(
     if (!bw) return 0;
     const shiftScore = W[bw.shifts[shift] ?? 'NEVER'];
     const roleScore = Math.max(W[bw.senior], W[bw.junior]);
-    return shiftScore * roleScore;
+    return shiftScore * roleScore * 10 + statBonus('baking', worker, shift);
   }
 
   return 0;

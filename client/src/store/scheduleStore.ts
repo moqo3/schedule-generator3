@@ -15,6 +15,7 @@ import {
   getCuttingAssignment,
   getBakingAssignment,
   getAssemblyWorker,
+  setStats,
 } from '@/lib/schedule-rules';
 
 /**
@@ -489,6 +490,17 @@ export const useScheduleStore = create<ScheduleState>((set, get) => ({
     try {
       const workerOptions = await api.getWorkers();
       set({ workerOptions });
+
+      // Load cumulative stats for the algorithm tiebreaker
+      try {
+        const stats = await api.import.getStats();
+        if (stats && stats.importedDates.length > 0) {
+          setStats(stats);
+        }
+      } catch {
+        // Stats are optional — algorithm works without them
+      }
+
       const { schedule } = get();
       if (schedule.isDraft) {
         const blocks = schedule.blocks.map(b =>
