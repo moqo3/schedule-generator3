@@ -1,4 +1,5 @@
 import { Router, Request, Response } from 'express';
+import { Prisma } from '@prisma/client';
 import { prisma } from '../lib/prisma';
 import {
   parseTelegramSchedules,
@@ -12,12 +13,15 @@ import {
   computeDayAwareDefaultPositions,
   computeDayAwareKneadDefaults,
   computeDayAwareBakingDefaults,
+  extractCumulativeStats,
+  mergeCumulativeStats,
   type ParsedSchedule,
   type WorkerStats,
   type KneadDefaults,
   type BakingDefaults,
   type DayAwareKneadDefaults,
   type DayAwareBakingDefaults,
+  type CumulativeStats,
 } from '../lib/telegram-parser';
 
 export const importRouter = Router();
@@ -157,6 +161,65 @@ async function applyDefaultsToDB(
   return { created, updated };
 }
 
+const STATS_KEY = '__cumulative_stats__';
+const EMPTY_STATS: CumulativeStats = { importedDates: [], cutting: {}, knead: {}, baking: {} };
+
+async function loadCumulativeStats(): Promise<CumulativeStats> {
+  const record = await prisma.worker.findFirst({ where: { shortName: STATS_KEY } });
+  if (!record || !record.defaultPositions) return structuredClone(EMPTY_STATS);
+  return record.defaultPositions as unknown as CumulativeStats;
+}
+
+async function saveCumulativeStats(stats: CumulativeStats): Promise<void> {
+  const existing = await prisma.worker.findFirst({ where: { shortName: STATS_KEY } });
+  if (existing) {
+    await prisma.worker.update({
+      where: { id: existing.id },
+      data: { defaultPositions: stats as unknown as Prisma.InputJsonValue },
+    });
+  } else {
+    await prisma.worker.create({
+      data: { name: STATS_KEY, shortName: STATS_KEY, defaultPositions: stats as unknown as Prisma.InputJsonValue },
+    });
+  }
+}
+
+/**
+ * GET /api/import/stats
+ * Returns cumulative stats stored in the DB.
+ */
+importRouter.get('/stats', async (_req: Request, res: Response) => {
+  try {
+    const stats = await loadCumulativeStats();
+    res.json(stats);
+  } catch (error) {
+    console.error('Error loading stats:', error);
+    res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
+/**
+ * POST /api/import/stats/reset
+ * Resets cumulative stats. Optionally accepts { text: string } to re-initialize from raw data.
+ */
+importRouter.post('/stats/reset', async (req: Request, res: Response) => {
+  const { text } = req.body as { text?: string };
+  try {
+    if (text) {
+      const schedules = parseTelegramSchedules(text);
+      const stats = extractCumulativeStats(schedules);
+      await saveCumulativeStats(stats);
+      res.json({ reset: true, importedDates: stats.importedDates.length, stats });
+    } else {
+      await saveCumulativeStats(structuredClone(EMPTY_STATS));
+      res.json({ reset: true, importedDates: 0 });
+    }
+  } catch (error) {
+    console.error('Error resetting stats:', error);
+    res.status(500).json({ error: 'Failed to reset stats' });
+  }
+});
+
 /**
  * POST /api/import/apply-defaults
  * Body: { defaults: Record<string, Partial<Record<'1'|'2'|'3', number>>> }
@@ -245,10 +308,23 @@ importRouter.post('/schedules', async (req: Request, res: Response) => {
       console.error('Warning: auto-apply defaults failed (schedules still imported):', err);
     }
 
+    // Accumulate cumulative stats
+    let statsUpdated = false;
+    try {
+      const incoming = extractCumulativeStats(parsed);
+      const existing = await loadCumulativeStats();
+      const merged = mergeCumulativeStats(existing, incoming);
+      await saveCumulativeStats(merged);
+      statsUpdated = true;
+    } catch (err) {
+      console.error('Warning: cumulative stats update failed:', err);
+    }
+
     res.status(201).json({
       imported,
       count: imported.length,
       defaultsApplied,
+      statsUpdated,
     });
   } catch (error) {
     console.error('Error importing schedules:', error);

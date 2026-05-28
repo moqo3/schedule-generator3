@@ -100,5 +100,13 @@ export const api = {
         method: 'POST',
         body: JSON.stringify({ text }),
       }),
+    getStats: () => request<CumulativeStats>('/import/stats'),
   },
 };
+
+export interface CumulativeStats {
+  importedDates: string[];
+  cutting: Record<string, Record<string, Record<string, number>>>;
+  knead: Record<string, Record<string, number>>;
+  baking: Record<string, { senior: Record<string, number>; junior: Record<string, number> }>;
+}

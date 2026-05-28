@@ -91,6 +91,20 @@ export interface DayAwareBakingDefaults {
 /** Day-aware default positions: dayOfWeek -> shift -> position */
 export type DayAwareDefaultPositions = Record<string, Partial<Record<string, number>>>;
 
+/**
+ * Cumulative stats: raw frequency counts accumulated across imports.
+ * Used by the client algorithm as a tiebreaker when hardcoded weights are equal.
+ */
+export interface CumulativeStats {
+  importedDates: string[];
+  /** cutting[worker][shift][position] = count */
+  cutting: Record<string, Record<string, Record<string, number>>>;
+  /** knead[worker][shift] = count */
+  knead: Record<string, Record<string, number>>;
+  /** baking[worker].senior[shift] = count, .junior[shift] = count */
+  baking: Record<string, { senior: Record<string, number>; junior: Record<string, number> }>;
+}
+
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
 /** Keycap digit: "1⃣" = U+0031 U+FE0F U+20E3  or  U+0031 U+20E3 */
@@ -821,4 +835,114 @@ export function computeDayAwareBakingDefaults(
   }
 
   return result;
+}
+
+// ── Cumulative stats ─────────────────────────────────────────────────────────
+
+/**
+ * Extract raw frequency counts from parsed schedules.
+ * Returns a CumulativeStats object that can be merged with existing stats.
+ */
+export function extractCumulativeStats(schedules: ParsedSchedule[]): CumulativeStats {
+  const dates: string[] = [];
+  const cutting: CumulativeStats['cutting'] = {};
+  const knead: CumulativeStats['knead'] = {};
+  const baking: CumulativeStats['baking'] = {};
+
+  for (const s of schedules) {
+    if (!dates.includes(s.date)) dates.push(s.date);
+
+    for (const block of s.blocks) {
+      if (block.isAssemblyBlock) continue;
+      const shift = String(block.order);
+
+      // Knead
+      if (block.kneadWorker) {
+        const name = block.kneadWorker.replace(/\.$/, '').trim();
+        if (name) {
+          if (!knead[name]) knead[name] = {};
+          knead[name][shift] = (knead[name][shift] || 0) + 1;
+        }
+      }
+
+      // Cutting
+      for (const w of block.cuttingWorkers) {
+        const name = w.name.trim();
+        if (!name) continue;
+        if (!cutting[name]) cutting[name] = {};
+        if (!cutting[name][shift]) cutting[name][shift] = {};
+        const pos = String(w.position);
+        cutting[name][shift][pos] = (cutting[name][shift][pos] || 0) + 1;
+      }
+
+      // Baking
+      if (block.bakingWorkers.length > 0) {
+        const senior = block.bakingWorkers[0].trim();
+        if (senior) {
+          if (!baking[senior]) baking[senior] = { senior: {}, junior: {} };
+          baking[senior].senior[shift] = (baking[senior].senior[shift] || 0) + 1;
+        }
+        if (block.bakingWorkers.length > 1) {
+          const junior = block.bakingWorkers[1].trim();
+          if (junior) {
+            if (!baking[junior]) baking[junior] = { senior: {}, junior: {} };
+            baking[junior].junior[shift] = (baking[junior].junior[shift] || 0) + 1;
+          }
+        }
+      }
+    }
+  }
+
+  return { importedDates: dates.sort(), cutting, knead, baking };
+}
+
+/**
+ * Merge two CumulativeStats objects, summing counts and unioning dates.
+ */
+export function mergeCumulativeStats(
+  existing: CumulativeStats,
+  incoming: CumulativeStats,
+): CumulativeStats {
+  const allDates = [...new Set([...existing.importedDates, ...incoming.importedDates])].sort();
+
+  // Find which dates are truly new (not already counted)
+  const newDates = incoming.importedDates.filter(d => !existing.importedDates.includes(d));
+  if (newDates.length === 0) {
+    return existing;
+  }
+
+  // Merge cutting
+  const cutting = structuredClone(existing.cutting);
+  for (const [worker, shifts] of Object.entries(incoming.cutting)) {
+    if (!cutting[worker]) cutting[worker] = {};
+    for (const [shift, positions] of Object.entries(shifts)) {
+      if (!cutting[worker][shift]) cutting[worker][shift] = {};
+      for (const [pos, count] of Object.entries(positions)) {
+        cutting[worker][shift][pos] = (cutting[worker][shift][pos] || 0) + count;
+      }
+    }
+  }
+
+  // Merge knead
+  const knead = structuredClone(existing.knead);
+  for (const [worker, shifts] of Object.entries(incoming.knead)) {
+    if (!knead[worker]) knead[worker] = {};
+    for (const [shift, count] of Object.entries(shifts)) {
+      knead[worker][shift] = (knead[worker][shift] || 0) + count;
+    }
+  }
+
+  // Merge baking
+  const baking = structuredClone(existing.baking);
+  for (const [worker, roles] of Object.entries(incoming.baking)) {
+    if (!baking[worker]) baking[worker] = { senior: {}, junior: {} };
+    for (const [shift, count] of Object.entries(roles.senior)) {
+      baking[worker].senior[shift] = (baking[worker].senior[shift] || 0) + count;
+    }
+    for (const [shift, count] of Object.entries(roles.junior)) {
+      baking[worker].junior[shift] = (baking[worker].junior[shift] || 0) + count;
+    }
+  }
+
+  return { importedDates: allDates, cutting, knead, baking };
 }
