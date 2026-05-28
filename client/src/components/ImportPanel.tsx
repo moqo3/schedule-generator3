@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { BarChart3, UserCheck, FileDown, Loader2 } from 'lucide-react';
+import React, { useState, useEffect } from 'react';
+import { BarChart3, UserCheck, FileDown, Loader2, Undo2 } from 'lucide-react';
+import type { CumulativeStats } from '@/lib/api';
 import { Card, CardHeader, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Label } from '@/components/ui/label';
@@ -70,6 +71,12 @@ export const ImportPanel: React.FC = () => {
   const [result, setResult] = useState<AnalyzeResult | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  const [stats, setStats] = useState<CumulativeStats | null>(null);
+  const [undoing, setUndoing] = useState(false);
+
+  useEffect(() => {
+    api.import.getStats().then(setStats).catch(() => {});
+  }, []);
 
   const handleAnalyze = async () => {
     if (!text.trim()) return;
@@ -123,7 +130,15 @@ export const ImportPanel: React.FC = () => {
         if (created.length > 0) msg += `, создано ${created.length} новых`;
         msg += '.';
       }
+      if (data.newStatsDates && data.newStatsDates.length > 0) {
+        msg += ` Статистика обновлена: +${data.newStatsDates.length} дн.`;
+      }
+      if (data.skippedStatsDates && data.skippedStatsDates.length > 0) {
+        msg += ` Пропущено (уже в статистике): ${data.skippedStatsDates.length} дн.`;
+      }
       setSuccessMessage(msg);
+      // Refresh stats
+      api.import.getStats().then(setStats).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Ошибка импорта');
     } finally {
@@ -160,6 +175,54 @@ export const ImportPanel: React.FC = () => {
         <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded-md px-3 py-2">
           {successMessage}
         </div>
+      )}
+
+      {/* Stats info + undo */}
+      {stats && stats.importedDates.length > 0 && (
+        <Card>
+          <CardContent className="p-3">
+            <div className="flex items-center justify-between">
+              <div className="text-sm">
+                <span className="text-muted-foreground">Статистика:</span>{' '}
+                <span className="font-semibold">{stats.importedDates.length} дн.</span>{' '}
+                <span className="text-xs text-muted-foreground">
+                  ({stats.importedDates[0]} — {stats.importedDates[stats.importedDates.length - 1]})
+                </span>
+              </div>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={async () => {
+                  setUndoing(true);
+                  setError(null);
+                  try {
+                    const res = await api.import.undoStats();
+                    setSuccessMessage(
+                      `Откат выполнен. Восстановлено ${res.restoredDates} дн.` +
+                      (res.removedDates.length > 0 ? ` Удалены: ${res.removedDates.join(', ')}` : '')
+                    );
+                    const fresh = await api.import.getStats();
+                    setStats(fresh);
+                    await loadWorkerOptions();
+                  } catch (err) {
+                    setError(err instanceof Error ? err.message : 'Ошибка отката');
+                  } finally {
+                    setUndoing(false);
+                  }
+                }}
+                disabled={undoing}
+                className="text-xs"
+              >
+                {undoing ? (
+                  <Loader2 className="h-3 w-3 mr-1 animate-spin" />
+                ) : (
+                  <Undo2 className="h-3 w-3 mr-1" />
+                )}
+                Откатить последний импорт
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
       )}
 
       {step === 'input' && (

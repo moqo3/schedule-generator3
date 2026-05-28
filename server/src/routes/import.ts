@@ -162,26 +162,37 @@ async function applyDefaultsToDB(
 }
 
 const STATS_KEY = '__cumulative_stats__';
+const STATS_BACKUP_KEY = '__cumulative_stats_backup__';
 const EMPTY_STATS: CumulativeStats = { importedDates: [], cutting: {}, knead: {}, baking: {} };
 
-async function loadCumulativeStats(): Promise<CumulativeStats> {
-  const record = await prisma.worker.findFirst({ where: { shortName: STATS_KEY } });
+async function loadStatsRecord(key: string): Promise<CumulativeStats> {
+  const record = await prisma.worker.findFirst({ where: { shortName: key } });
   if (!record || !record.defaultPositions) return structuredClone(EMPTY_STATS);
   return record.defaultPositions as unknown as CumulativeStats;
 }
 
-async function saveCumulativeStats(stats: CumulativeStats): Promise<void> {
-  const existing = await prisma.worker.findFirst({ where: { shortName: STATS_KEY } });
+async function saveStatsRecord(key: string, stats: CumulativeStats): Promise<void> {
+  const existing = await prisma.worker.findFirst({ where: { shortName: key } });
+  const data = { defaultPositions: stats as unknown as Prisma.InputJsonValue };
   if (existing) {
-    await prisma.worker.update({
-      where: { id: existing.id },
-      data: { defaultPositions: stats as unknown as Prisma.InputJsonValue },
-    });
+    await prisma.worker.update({ where: { id: existing.id }, data });
   } else {
-    await prisma.worker.create({
-      data: { name: STATS_KEY, shortName: STATS_KEY, defaultPositions: stats as unknown as Prisma.InputJsonValue },
-    });
+    await prisma.worker.create({ data: { name: key, shortName: key, ...data } });
   }
+}
+
+async function loadCumulativeStats(): Promise<CumulativeStats> {
+  return loadStatsRecord(STATS_KEY);
+}
+
+async function saveCumulativeStats(stats: CumulativeStats, saveBackup = true): Promise<void> {
+  if (saveBackup) {
+    const current = await loadCumulativeStats();
+    if (current.importedDates.length > 0) {
+      await saveStatsRecord(STATS_BACKUP_KEY, current);
+    }
+  }
+  await saveStatsRecord(STATS_KEY, stats);
 }
 
 /**
@@ -195,6 +206,32 @@ importRouter.get('/stats', async (_req: Request, res: Response) => {
   } catch (error) {
     console.error('Error loading stats:', error);
     res.status(500).json({ error: 'Failed to load stats' });
+  }
+});
+
+/**
+ * POST /api/import/stats/undo
+ * Restores the previous version of cumulative stats (before last import).
+ */
+importRouter.post('/stats/undo', async (_req: Request, res: Response) => {
+  try {
+    const backup = await loadStatsRecord(STATS_BACKUP_KEY);
+    if (backup.importedDates.length === 0) {
+      res.status(400).json({ error: 'Нет данных для отката — предыдущая версия статистики отсутствует' });
+      return;
+    }
+    const current = await loadCumulativeStats();
+    await saveStatsRecord(STATS_KEY, backup);
+    // Clear backup so undo can only be done once
+    await saveStatsRecord(STATS_BACKUP_KEY, structuredClone(EMPTY_STATS));
+    res.json({
+      restored: true,
+      restoredDates: backup.importedDates.length,
+      removedDates: current.importedDates.filter(d => !backup.importedDates.includes(d)),
+    });
+  } catch (error) {
+    console.error('Error undoing stats:', error);
+    res.status(500).json({ error: 'Failed to undo stats' });
   }
 });
 
@@ -308,14 +345,25 @@ importRouter.post('/schedules', async (req: Request, res: Response) => {
       console.error('Warning: auto-apply defaults failed (schedules still imported):', err);
     }
 
-    // Accumulate cumulative stats
+    // Accumulate cumulative stats (only for dates not yet imported)
     let statsUpdated = false;
+    let newStatsDates: string[] = [];
+    let skippedStatsDates: string[] = [];
     try {
-      const incoming = extractCumulativeStats(parsed);
       const existing = await loadCumulativeStats();
-      const merged = mergeCumulativeStats(existing, incoming);
-      await saveCumulativeStats(merged);
-      statsUpdated = true;
+      const newSchedules = parsed.filter(s => !existing.importedDates.includes(s.date));
+      skippedStatsDates = parsed
+        .filter(s => existing.importedDates.includes(s.date))
+        .map(s => s.date)
+        .filter((d, i, a) => a.indexOf(d) === i);
+
+      if (newSchedules.length > 0) {
+        const incoming = extractCumulativeStats(newSchedules);
+        const merged = mergeCumulativeStats(existing, incoming);
+        await saveCumulativeStats(merged);
+        newStatsDates = incoming.importedDates;
+        statsUpdated = true;
+      }
     } catch (err) {
       console.error('Warning: cumulative stats update failed:', err);
     }
@@ -325,6 +373,8 @@ importRouter.post('/schedules', async (req: Request, res: Response) => {
       count: imported.length,
       defaultsApplied,
       statsUpdated,
+      newStatsDates,
+      skippedStatsDates,
     });
   } catch (error) {
     console.error('Error importing schedules:', error);

@@ -101,6 +101,9 @@ export const api = {
         body: JSON.stringify({ text }),
       }),
     getStats: () => request<CumulativeStats>('/import/stats'),
+    undoStats: () => request<{ restored: boolean; restoredDates: number; removedDates: string[] }>(
+      '/import/stats/undo', { method: 'POST' },
+    ),
   },
 };
 
